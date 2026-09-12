@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ShareXHost/ShareXHost.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ShareXHost.Tests/ShareXHost.Tests.csproj" />
+  </Folder>
+</Solution>

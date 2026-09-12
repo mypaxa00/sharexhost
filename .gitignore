@@ -1,0 +1,43 @@
+# Build outputs
+bin/
+obj/
+**/bin/
+**/obj/
+
+# .NET / Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+*.rsuser
+*.cache
+
+# Rider / ReSharper
+.idea/
+*.sln.iml
+
+# ASP.NET Core secrets and local config
+appsettings.Development.json
+secrets.json
+*.local
+
+# Node / frontend
+client/ShareXHost.Client/node_modules/
+client/ShareXHost.Client/dist/
+client/ShareXHost.Client/dist-ssr/
+client/ShareXHost.Client/.vite/
+client/ShareXHost.Client/.eslintcache
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
