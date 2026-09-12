@@ -29,6 +29,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 });
 builder.Services.AddSingleton<IAuthorizationHandler, DeleteFileHandler>();
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
+builder.Services.AddSingleton<IShortIdGenerator, ShortIdGenerator>();
+builder.Services.AddScoped<ILinkService, LinkService>();
 
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer(options =>
