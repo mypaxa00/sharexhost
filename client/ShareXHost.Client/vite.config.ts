@@ -17,6 +17,9 @@ export default defineConfig({
       },
       '/files': {
         target: 'http://localhost:5128'
+      },
+      '/links': {
+        target: 'http://localhost:5128'
       }
     }
   }

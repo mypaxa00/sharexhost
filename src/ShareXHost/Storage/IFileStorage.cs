@@ -1,4 +1,4 @@
-namespace ShareXHost.Storage;
+namespace ShareXHost;
 
 public interface IFileStorage
 {

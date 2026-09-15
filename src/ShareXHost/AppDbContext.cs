@@ -43,14 +43,13 @@ public class
         modelBuilder.Entity<Link>(entity =>
         {
             entity.ToTable("links");
-            entity.Property(e => e.Id).HasColumnName("id").IsRequired();
-            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.HasKey(e => e.ShortId);
             entity.Property(e => e.ShortId).HasColumnName("short_id").IsRequired();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.Property(e => e.Url).HasColumnName("url").IsRequired();
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
             entity.Property(e => e.DeleteToken).HasColumnName("delete_token");
         
-            entity.HasIndex(e => e.ShortId).IsUnique();
             entity.HasIndex(e => e.DeleteToken).IsUnique();
             
             entity.HasOne(d => d.User).WithMany()

@@ -14,7 +14,7 @@ public sealed class LinkService : ILinkService
         _dbContext = dbContext;
     }
 
-    public async Task<Link> CreateAsync(string url, Guid? userId)
+    public async Task<UploadLinkResult> CreateAsync(string url, Guid? userId)
     {
         Link link;
         
@@ -30,17 +30,19 @@ public sealed class LinkService : ILinkService
             catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
             {
                 attempts++;
-                if (attempts == maxAttempts) throw;
+                if (attempts == maxAttempts)
+                {
+                    return UploadLinkResult.Failure($"Failed to generate a unique short link after {maxAttempts} attempts.");
+                }
             }
         }
 
-        return link;
+        return UploadLinkResult.Success(link.ShortId, userId.HasValue ? null : link.DeleteToken);
 
         async Task<Link> GenerateAndStoreLink()
         {
             Link link1 = new()
             {
-                Id = Guid.NewGuid(),
                 ShortId = _shortIdGenerator.Generate(),
                 Url = url,
                 CreatedAt = DateTime.UtcNow,
@@ -63,4 +65,44 @@ public sealed class LinkService : ILinkService
             return link1;
         }
     }
+
+    public async Task<GetLinkResult> GetAsync(string linkId)
+    {
+        Link? link = await _dbContext.Links.FirstOrDefaultAsync(x => x.ShortId == linkId);
+        if (link is null) return GetLinkResult.NotFound();
+        
+        return GetLinkResult.SuccessResult(link.Url);
+    }
+
+    public async Task<DeleteLinkResult> DeleteAsync(string linkId, string? deleteToken, Guid? userId)
+    {
+        Link? link = await _dbContext.Links.FirstOrDefaultAsync(x => x.ShortId == linkId);
+        if (link is null) return DeleteLinkResult.NoContent();
+        
+        bool canDeleteOwnedLink = userId.HasValue && link.UserId == userId;
+        bool canDeleteGuestLink = link.UserId is null && link.DeleteToken == deleteToken;
+        
+        if (canDeleteGuestLink || canDeleteOwnedLink)
+        {
+            _dbContext.Links.Remove(link);
+            try
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateException exception)
+            {
+                return DeleteLinkResult.Failure("Error deleting the link from the database.");
+            }
+            
+            return DeleteLinkResult.Success();
+        }
+
+        return DeleteLinkResult.Forbidden();
+    }
+}
+
+public enum UploadLinkStatus
+{
+    Success = 0,
+    Failure
 }

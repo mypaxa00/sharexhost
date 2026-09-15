@@ -12,7 +12,7 @@ public class LocalFileStorage : IFileStorage
     
     public async Task<string> SaveFileAsync(Stream file)
     {
-        string fileName = Guid.NewGuid().ToString();
+        string fileName = Path.GetRandomFileName();
         string filePath = Path.Combine(_storageRoot, fileName);
         using (FileStream fileStream = new(filePath, FileMode.Create, FileAccess.Write))
         {

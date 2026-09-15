@@ -2,5 +2,5 @@ namespace ShareXHost;
 
 public sealed class AntiForgeryTokenResponse
 {
-    public string RequestToken { get; set; } = null!;
+    public string RequestToken { get; init; } = null!;
 }
