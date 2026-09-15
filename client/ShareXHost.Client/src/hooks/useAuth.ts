@@ -1,8 +1,13 @@
 import {useEffect, useState } from "react"
 
-function useAuth() {
+export interface IUserData {
+    name: string
+    role: string
+}
+
+export function useAuth() {
     const [initialized, setInitialized] = useState(false)
-    const [user, setUser] = useState<string | null>(null)
+    const [user, setUser] = useState<IUserData | null>(null)
 
     async function loadUser() {
         const jwt = localStorage.getItem('jwt')
@@ -25,14 +30,20 @@ function useAuth() {
             return
         }
 
-        const userData = await response.json()
-        setUser(userData.name)
+        const userData = await response.json() as IUserData
+        setUser(userData)
     }
 
 
-    async function onLogin(login: string) {
+    async function onLogin(login: string, password: string) {
         setUser(null)
-        const response = await fetch(`/dev-token/${login}`)
+        const response = await fetch(`/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name: login, password: password })
+        })
         if (!response.ok) {
             console.error('Failed to get JWT token, for login:', login, ' status:', response.status)
             throw new Error('Failed to get JWT token.')
@@ -61,5 +72,3 @@ function useAuth() {
     
     return {user, initialized, login: onLogin, logout: onLogout}
 }
-
-export default useAuth

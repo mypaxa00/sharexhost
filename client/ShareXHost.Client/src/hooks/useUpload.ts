@@ -1,3 +1,5 @@
+import { getAuthHeaders } from "../api"
+
 export interface UploadResponse {
     url: string;
     deletionUrl: string;
@@ -5,13 +7,9 @@ export interface UploadResponse {
 
 export function useUpload(){
     async function uploadFile(formData: FormData) : Promise<UploadResponse> {
-        const jwt = localStorage.getItem('jwt')
-
         const response = await fetch('/files', {
             method: 'POST',
-            headers: jwt ? {
-                'Authorization': `Bearer ${jwt}`
-            } : {},
+            headers: getAuthHeaders(),
             body: formData
         })
         if (!response.ok) {
@@ -24,20 +22,16 @@ export function useUpload(){
         return result
     }
     
-    async function deleteFile(url: string) : Promise<UploadResponse> {
-        const jwt = localStorage.getItem('jwt')
-
+    async function deleteFile(url: string) : Promise<void> {
         const response = await fetch(url, {
             method: 'DELETE',
-            headers: jwt ? {
-                'Authorization': `Bearer ${jwt}`
-            } : {},
+            headers: getAuthHeaders(),
         })
         if (!response.ok) {
             throw new UploadError('File deletion failed', response.status)
         }
 
-        console.log('File uploaded successfully:')
+        console.log('File deleted successfully.')
     }
     
     return { uploadFile, deleteFile }

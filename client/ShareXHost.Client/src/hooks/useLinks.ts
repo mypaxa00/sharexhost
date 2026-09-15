@@ -1,3 +1,5 @@
+import { getAuthHeaders } from "../api"
+
 export interface LinkResponse {
     url: string;
     deletionUrl: string;
@@ -5,17 +7,14 @@ export interface LinkResponse {
 
 export function useLinks(){
     async function createLink(url: string) : Promise<LinkResponse> {
-        const jwt = localStorage.getItem('jwt')
-
         const response = await fetch('/links', {
             method: 'POST',
-            headers: jwt ? {
-                'Authorization': `Bearer ${jwt}`,
-                'Content-Type': 'application/json'
-            } : {'Content-Type': 'application/json'},
+            headers: {...getAuthHeaders(), 'Content-Type': 'application/json'},
             body: JSON.stringify({ url })
         })
         if (!response.ok) {
+            const errorData = await response.json()
+            console.log(errorData)
             throw new LinkError('Link upload failed', response.status)
         }
 
@@ -26,19 +25,15 @@ export function useLinks(){
     }
     
     async function deleteLink(url: string) : Promise<void> {
-        const jwt = localStorage.getItem('jwt')
-
         const response = await fetch(url, {
             method: 'DELETE',
-            headers: jwt ? {
-                'Authorization': `Bearer ${jwt}`
-            } : {},
+            headers: getAuthHeaders(),
         })
         if (!response.ok) {
             throw new LinkError('Link deletion failed', response.status)
         }
 
-        console.log('Link deleted successfully:')
+        console.log('Link deleted successfully.')
     }
 
     return { createLink, deleteLink }

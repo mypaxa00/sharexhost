@@ -1,6 +1,6 @@
 import { useState } from "react"
 import './App.css'
-import useAuth from "./hooks/useAuth.ts";
+import {useAuth, type IUserData } from "./hooks/useAuth.ts";
 import FileUpload from "./components/FileUpload.tsx";
 import CreateLink from "./components/CreateLink.tsx";
 
@@ -19,18 +19,20 @@ function App() {
     )
 }
 
-function Welcome({user, onLogin, onLogout}: {user: string | null, onLogin: (login: string) => Promise<void>, onLogout: () => void}) {
+function Welcome({user, onLogin, onLogout}: {user: IUserData | null, onLogin: (login: string, password: string) => Promise<void>, onLogout: () => void}) {
     const [login, setLogin] = useState('')
+    const [password, setPassword] = useState('')
     const [loginError, setLoginError] = useState<string | null>(null)
     const [loggingIn, setLoggingIn] = useState(false)
+    
+    const loginButtonDisabled = loggingIn || !login || !password
 
     async function handleLogin() {
         setLoginError(null)
         setLoggingIn(true)
         try {
-            await onLogin(login)
-        } catch (error) {
-            console.error("LOGIN ERROR:", error)
+            await onLogin(login, password)
+        } catch {
             setLoginError("Failed to log in. Try again later.")
         } finally {
             setLoggingIn(false)
@@ -39,8 +41,15 @@ function Welcome({user, onLogin, onLogout}: {user: string | null, onLogin: (logi
     
     return user != null
         ? (<>
-            <p>Welcome, {user}!</p>
-            <button onClick={onLogout}>Logout</button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+                <p>Welcome, {user.name}!</p>
+                <sub>Role: {user.role}</sub>
+            </div>
+            <button className="button-accent" onClick={() => {
+                const jwt = localStorage.getItem('jwt')
+                if (jwt) navigator.clipboard.writeText(jwt)
+            }}>Copy ShareX Token</button>
+            <button className="button-danger" onClick={onLogout}>Logout</button>
         </>)
         : (<>
             <p>You are not logged in. Uploads will be anonymous.</p>
@@ -50,7 +59,13 @@ function Welcome({user, onLogin, onLogout}: {user: string | null, onLogin: (logi
                 value={login}
                 onChange={(e) => setLogin(e.target.value)}
             />
-            <button onClick={handleLogin} disabled={loggingIn}>{loggingIn ? "Logging in..." : "Login"}</button>
+            <input
+                type="password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+            />
+            <button onClick={handleLogin} disabled={loginButtonDisabled}>{loggingIn ? "Logging in..." : "Login"}</button>
             {loginError && <p className="error">{loginError}</p>}
         </>)
 }

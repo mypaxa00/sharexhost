@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -15,7 +16,7 @@ public partial class Program
 {
     private const long MaxFileSize = 50 * 1024 * 1024; // 50 MB
     
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -124,36 +125,27 @@ public partial class Program
         app.MapGet("/me", (ClaimsPrincipal user) =>
         {
             string name = user.Identity?.Name ?? "Unknown";
-            string? userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            string issuer = user.FindFirst(JwtRegisteredClaimNames.Iss)?.Value ?? "Unknown";
-            string audience = user.FindFirst(JwtRegisteredClaimNames.Aud)?.Value ?? "Unknown";
             string role = user.FindFirst(ClaimTypes.Role)?.Value ?? "None";
     
-            return Results.Ok(new
+            return Results.Ok(new MeResponse()
             {
-                name,
-                userId,
-                issuer,
-                audience,
-                role
+                Name = name,
+                Role = role
             });
         }).RequireAuthorization();
-
-        app.MapGet("/dev-token/{name}", (string name) => 
+        
+        app.MapPost("/auth/login", async (LoginRequest request, IUserService userService) =>
         {
-            string? guidByName = GuidByName();
-            
-            if (guidByName is null)
-            {
-                return Results.BadRequest(new { error = "Invalid name provided." });
-            }
-            
+            User? user = await userService.AuthenticateAsync(request.Name, request.Password);
+            if (user is null) return Results.Unauthorized();
+
             Claim[] claims =
             [
-                new(ClaimTypes.Name, name),
-                new(ClaimTypes.NameIdentifier, guidByName),
+                new(ClaimTypes.Name, user.Name),
+                new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new(ClaimTypes.Role, user.Role.ToString())
             ];
-    
+
             SigningCredentials credentials = new(securityKey, SecurityAlgorithms.HmacSha256);
 
             JwtSecurityToken token = new(
@@ -168,21 +160,6 @@ public partial class Program
             {
                 Token = new JwtSecurityTokenHandler().WriteToken(token)
             });
-    
-            string? GuidByName()
-            {
-                // For demonstration purposes, we return a fixed GUID for any name.
-                // In a real application, you would look up the user in a database or other data store.
-                switch (name)
-                {
-                    case "Alice":
-                        return "550e8400-e29b-41d4-a716-446655440000";
-                    case "Bob":
-                        return "11111111-1111-1111-1111-111111111111";
-                    default:
-                        return null;
-                }
-            }
         });
 
         app.MapGet("/antiforgery/token", (IAntiforgery antiforgery, HttpContext context) =>
@@ -193,45 +170,63 @@ public partial class Program
             return Results.Ok(new AntiForgeryTokenResponse{ RequestToken = token });
         });
 
-        app.Run();
-
-        static Guid? TryGetUserId(ClaimsPrincipal user)
+        app.MapPost("/admin/users", async (CreateUserRequest request, IUserService userService) =>
         {
-            string? userIdValue = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            return !string.IsNullOrEmpty(userIdValue) && Guid.TryParse(userIdValue, out Guid userId)
-                ? userId
-                : null;
-        }
+            User? existingUser = await userService.FindByUserNameAsync(request.UserName);
+            
+            if (existingUser != null) return Results.Conflict("User already exists");
 
-        UploadResponse BuildFileUploadResponse(HttpContext context, UploadFileResult result, bool isAuthenticated)
+            await userService.CreateAsync(request.UserName, request.Password, request.Name, request.Role);
+            return Results.Created();
+        }).RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.Admin)));
+        
+        using (IServiceScope scope = app.Services.CreateScope())
         {
-            string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
-            string fileUrl = $"{baseUrl}/files/{result.FileId}";
-            string deletionUrl = isAuthenticated || result.DeleteToken is null
-                ? $"{fileUrl}"
-                : $"{fileUrl}?deleteToken={result.DeleteToken}";
+            IAdminBootstrapper bootstrapper =
+                scope.ServiceProvider.GetRequiredService<IAdminBootstrapper>();
 
-            return new UploadResponse
-            {
-                Url = fileUrl,
-                DeletionUrl = deletionUrl
-            };
+            await bootstrapper.InitializeAsync();
         }
         
-        UploadResponse BuildLinkUploadResponse(HttpContext context, UploadLinkResult result, bool isAuthenticated)
-        {
-            string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
-            string linkUrl = $"{baseUrl}/s/{result.ShortId}";
-            string deletionUrl = isAuthenticated || result.DeleteToken is null
-                ? $"{baseUrl}/links/{result.ShortId}"
-                : $"{baseUrl}/links/{result.ShortId}?deleteToken={result.DeleteToken}";
+        app.Run();
+    }
 
-            return new UploadResponse
-            {
-                Url = linkUrl,
-                DeletionUrl = deletionUrl
-            };
-        }
+    private static Guid? TryGetUserId(ClaimsPrincipal user)
+    {
+        string? userIdValue = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return !string.IsNullOrEmpty(userIdValue) && Guid.TryParse(userIdValue, out Guid userId)
+            ? userId
+            : null;
+    }
+
+    private static UploadResponse BuildFileUploadResponse(HttpContext context, UploadFileResult result, bool isAuthenticated)
+    {
+        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
+        string fileUrl = $"{baseUrl}/files/{result.FileId}";
+        string deletionUrl = isAuthenticated || result.DeleteToken is null
+            ? $"{fileUrl}"
+            : $"{fileUrl}?deleteToken={result.DeleteToken}";
+
+        return new UploadResponse
+        {
+            Url = fileUrl,
+            DeletionUrl = deletionUrl
+        };
+    }
+
+    private static UploadResponse BuildLinkUploadResponse(HttpContext context, UploadLinkResult result, bool isAuthenticated)
+    {
+        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
+        string linkUrl = $"{baseUrl}/s/{result.ShortId}";
+        string deletionUrl = isAuthenticated || result.DeleteToken is null
+            ? $"{baseUrl}/links/{result.ShortId}"
+            : $"{baseUrl}/links/{result.ShortId}?deleteToken={result.DeleteToken}";
+
+        return new UploadResponse
+        {
+            Url = linkUrl,
+            DeletionUrl = deletionUrl
+        };
     }
 
 
@@ -295,5 +290,9 @@ public partial class Program
                         QueueLimit = 0
                     }));
         });
+        
+        builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+        builder.Services.AddScoped<IUserService, UserService>();
+        builder.Services.AddScoped<IAdminBootstrapper, AdminBootstrapper>();
     }
 }

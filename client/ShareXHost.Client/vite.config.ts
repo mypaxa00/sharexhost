@@ -20,6 +20,9 @@ export default defineConfig({
       },
       '/links': {
         target: 'http://localhost:5128'
+      },
+      '/auth/login': {
+        target: 'http://localhost:5128'
       }
     }
   }

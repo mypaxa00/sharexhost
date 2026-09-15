@@ -17,7 +17,12 @@ public class
         {
             entity.ToTable("users");
             entity.Property(e => e.Id).HasColumnName("id").IsRequired();
+            entity.Property(e => e.UserName).HasColumnName("user_name").IsRequired();
             entity.Property(e => e.Name).HasColumnName("name").IsRequired();
+            entity.Property(e => e.PasswordHash).HasColumnName("password_hash").IsRequired();
+            entity.Property(e => e.Role).HasColumnName("role").IsRequired();
+            
+            entity.HasIndex(e => e.UserName).IsUnique().HasDatabaseName("users_user_name_key");
         });
         
         modelBuilder.Entity<File>(entity =>
