@@ -37,7 +37,7 @@ public sealed class FileService : IFileService
             : GetFileResult.Success(stream, file.ContentType);
     }
 
-    public async Task<UploadFileResult> UploadAsync(Stream content, long sizeBytes, string contentType, Guid? userId)
+    public async Task<UploadFileResult> UploadAsync(Stream content, long sizeBytes, string contentType, string fileName, Guid? userId)
     {
         if (sizeBytes == 0)
         {
@@ -53,6 +53,7 @@ public sealed class FileService : IFileService
             StoragePath = storagePath,
             SizeBytes = sizeBytes,
             ContentType = contentType,
+            OriginalFileName = fileName,
             CreatedAt = DateTime.UtcNow,
             DeleteToken = Guid.NewGuid().ToString()
         };
@@ -121,6 +122,31 @@ public sealed class FileService : IFileService
         return !userId.HasValue
             ? DeleteFileResult.NoContent()
             : DeleteFileResult.Forbidden();
+    }
+
+    public async Task<PaginatedResponse<FileResponse>> GetFilesForUserAsync(Guid userId, int page, int pageSize)
+    {
+        if (page < 1) throw new ArgumentOutOfRangeException(nameof(page), "Page number must be greater than 0.");
+        if (pageSize is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than 0 and less than or equal to 100.");
+
+        List<FileResponse> items = await _dbContext.Files
+            .AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new FileResponse
+            {
+                Id = x.Id,
+                SizeBytes = x.SizeBytes,
+                OriginalFileName = x.OriginalFileName,
+                CreatedAt = x.CreatedAt
+            })
+            .ToListAsync();
+        
+        int totalCount = await _dbContext.Files.AsNoTracking().Where(x => x.UserId == userId).CountAsync();
+        
+        return new PaginatedResponse<FileResponse>(items, totalCount, page, pageSize);
     }
 
     private sealed record FileData(string StoragePath, string ContentType);

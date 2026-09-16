@@ -40,7 +40,17 @@ public partial class Program
         app.UseRateLimiter();
 
         app.MapGet("/", () => "Hello World!");
-
+        
+        app.MapGet("/files/mine", async (IFileService fileService, HttpContext context, int page = 1, int pageSize = 25) =>
+        {
+            if (page < 1 || pageSize < 1 || pageSize > 100)
+                return Results.BadRequest(new { error = "Invalid pagination parameters." });
+            Guid? userId = TryGetUserId(context.User);
+            if (userId is null) return Results.Unauthorized();
+            PaginatedResponse<FileResponse> files = await fileService.GetFilesForUserAsync(userId.Value, page, pageSize);
+            return Results.Ok(files);
+        }).RequireAuthorization();
+        
         app.MapGet("/files/{id:guid}", async (Guid id, IFileService fileService) =>
         {
             GetFileResult result = await fileService.GetAsync(id);
@@ -64,7 +74,7 @@ public partial class Program
             
             await using Stream openReadStream = file.OpenReadStream();
             UploadFileResult result =
-                await fileService.UploadAsync(openReadStream, file.Length, file.ContentType, userId);
+                await fileService.UploadAsync(openReadStream, file.Length, file.ContentType, Path.GetFileName(file.FileName), userId);
 
             return result.Status switch
             {

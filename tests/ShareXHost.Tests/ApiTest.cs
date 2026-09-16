@@ -25,7 +25,8 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
 
-        await AuthAlice();
+        using IServiceScope scope = _factory.Services.CreateScope();
+        await AuthAlice(scope);
 
         string antiForgeryToken = await GetAntiForgeryToken();
 
@@ -39,16 +40,24 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.NotNull(uploadResult.Url);
         Assert.NotNull(uploadResult.DeletionUrl);
 
-        using IServiceScope scope = _factory.Services.CreateScope();
         AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Guid guid = Guid.Parse(uploadResult.Url.Split('/').Last());
-        string? storagePath =
-            await dbContext.Files.Where(f => f.Id == guid).Select(f => f.StoragePath).FirstOrDefaultAsync();
+        // get the storage path and original file name from the database to verify that the file is stored correctly
+        var resultedFile = await dbContext.Files
+            .Where(f => f.Id == guid)
+            .Select(f => new
+            {
+                path = f.StoragePath,
+                name = f.OriginalFileName
+            })
+            .FirstOrDefaultAsync();
 
-        Assert.NotNull(storagePath);
+        Assert.NotNull(resultedFile?.path);
+        Assert.NotNull(resultedFile.name);
+        Assert.Equal("test.txt", resultedFile.name);
 
         IFileStorage fileStorage = _factory.Services.GetRequiredService<IFileStorage>();
-        using Stream? fileStream = await fileStorage.GetFileAsync(storagePath);
+        await using Stream? fileStream = await fileStorage.GetFileAsync(resultedFile.path);
 
         // compare bytes
         using MemoryStream memoryStream = new();
@@ -69,7 +78,8 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
 
-        await AuthAlice();
+        using IServiceScope scope = _factory.Services.CreateScope();
+        await AuthAlice(scope);
 
         string antiForgeryToken = await GetAntiForgeryToken();
 
@@ -79,9 +89,8 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         UploadResponse uploadResult = (await uploadResponse.Content.ReadFromJsonAsync<UploadResponse>())!;
 
-        using IServiceScope scope = _factory.Services.CreateScope();
         AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Guid guid = Guid.Parse(uploadResult.Url!.Split('/').Last());
+        Guid guid = Guid.Parse(uploadResult.Url.Split('/').Last());
         // storage path to verify that the file is deleted from storage after deletion
         string storagePath = (await dbContext.Files.Where(f => f.Id == guid).Select(f => f.StoragePath).FirstOrDefaultAsync())!;
 
@@ -95,7 +104,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         Assert.False(exists);
         
-        IFileStorage fileStorage = _factory.Services.GetRequiredService<IFileStorage>();
+        IFileStorage fileStorage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
         // verify that the file is deleted from storage
         Stream? fileStream = await fileStorage.GetFileAsync(storagePath);
         Assert.Null(fileStream);
@@ -118,7 +127,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         using IServiceScope scope = _factory.Services.CreateScope();
         AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Guid guid = Guid.Parse(uploadResult.Url!.Split('/').Last());
+        Guid guid = Guid.Parse(uploadResult.Url.Split('/').Last());
         // storage path to verify that the file is deleted from storage after deletion
         string storagePath = (await dbContext.Files.Where(f => f.Id == guid).Select(f => f.StoragePath).FirstOrDefaultAsync())!;
 
@@ -145,7 +154,8 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
         
-        await AuthAlice();
+        await AuthAlice(null);
+        
         string antiForgeryToken = await GetAntiForgeryToken();
 
         content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
@@ -222,7 +232,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         User? authenticatedUser = await userService.AuthenticateAsync("testuser", "password123");
         Assert.NotNull(authenticatedUser);
-        Assert.Equal(user.Id, authenticatedUser!.Id);
+        Assert.Equal(user.Id, authenticatedUser.Id);
         
         User? wrongUserPassword = await userService.AuthenticateAsync("testuser2", "password123");
         Assert.Null(wrongUserPassword);
@@ -344,10 +354,26 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         return antiForgeryToken;
     }
 
-    private async Task AuthAlice()
+    private async Task AuthAlice(IServiceScope? scope)
     {
-        HttpResponseMessage response = await _client.GetAsync("/dev-token/Alice");
+        IServiceScope currentScope = scope ?? _factory.Services.CreateScope();
+        const string userName = "Alice";
+        const string password = "password123";
+        
+        IUserService userService = currentScope.ServiceProvider.GetRequiredService<IUserService>();
+        User? alice = await userService.FindByUserNameAsync(userName);
+        if (alice is null) await userService.CreateAsync(userName, password, userName, UserRole.User);
+
+        HttpResponseMessage response = await _client.PostAsync("/auth/login", JsonContent.Create(new LoginRequest
+        {
+            Name = userName,
+            Password = password
+        }));
+        response.EnsureSuccessStatusCode();
+        
         string token = (await response.Content.ReadFromJsonAsync<JwtTokenResponse>())!.Token;
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        
+        if (scope is null) currentScope.Dispose();
     }
 }
