@@ -35,12 +35,12 @@
   padding: 16px;
 }
 
-.url-input {
+.string-input {
   padding: 8px 12px;
   border: 2px solid var(--border);
 }
 
-.url-input:focus {
+.string-input:focus {
   border-color: var(--accent);
   /*border-radius: 8px;*/
   outline: none;

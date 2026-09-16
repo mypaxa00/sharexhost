@@ -23,6 +23,9 @@ export default defineConfig({
       },
       '/auth/login': {
         target: 'http://localhost:5128'
+      },
+      '/admin/users': {
+        target: 'http://localhost:5128'
       }
     }
   }

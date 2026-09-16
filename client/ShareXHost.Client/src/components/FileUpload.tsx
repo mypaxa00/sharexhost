@@ -42,7 +42,7 @@ function FileUpload() {
 
     async function onDelete() {
         try {
-            await deleteFile(uploadResult.deletionUrl)
+            await deleteFile(uploadResult!.deletionUrl)
             setUploadResult(null)
         } catch (error) {
             if (error instanceof UploadError && error.status === 403) {

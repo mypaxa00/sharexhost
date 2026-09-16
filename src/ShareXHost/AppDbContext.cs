@@ -33,6 +33,7 @@ public class
             entity.Property(e => e.StoragePath).HasColumnName("storage_path").IsRequired();
             entity.Property(e => e.SizeBytes).HasColumnName("size_bytes").IsRequired();
             entity.Property(e => e.ContentType).HasColumnName("content_type").IsRequired();
+            entity.Property(e => e.OriginalFileName).HasColumnName("original_file_name").IsRequired();
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
             entity.Property(e => e.DeleteToken).HasColumnName("delete_token");
 

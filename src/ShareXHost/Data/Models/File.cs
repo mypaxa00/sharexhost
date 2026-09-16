@@ -7,6 +7,7 @@ public sealed class File
     public string StoragePath { get; set; } = null!;
     public long SizeBytes { get; set; }
     public string ContentType { get; set; } = null!;
+    public string OriginalFileName { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
     public string? DeleteToken { get; set; }
 

@@ -1,8 +1,9 @@
 import { useState } from "react"
 import './App.css'
-import {useAuth, type IUserData } from "./hooks/useAuth.ts";
+import {useAuth, type IUserData, UserRole } from "./hooks/useAuth.ts";
 import FileUpload from "./components/FileUpload.tsx";
 import CreateLink from "./components/CreateLink.tsx";
+import AdminUserCreate from "./components/AdminUserCreate.tsx";
 
 function App() {
     const {user, initialized, login, logout} = useAuth();
@@ -12,6 +13,7 @@ function App() {
             {!initialized && <p>Loading...</p>}
             {initialized && <Welcome user={user} onLogin={login} onLogout={logout}/>}
             <div className="tools">
+                {user?.role === UserRole.Admin && <AdminUserCreate />}
                 <FileUpload />
                 <CreateLink />
             </div>

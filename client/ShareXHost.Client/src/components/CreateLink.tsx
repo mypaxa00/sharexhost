@@ -42,7 +42,7 @@ function CreateLink() {
     }
     async function onDeleteLink() {
         try {
-            await deleteLink(linkResult.deletionUrl)
+            await deleteLink(linkResult!.deletionUrl)
             setLinkResult(null)
         } catch (error) {
             if (error instanceof LinkError && error.status === 403) {
@@ -56,7 +56,7 @@ function CreateLink() {
     return (
         <section className="tool">
             <h2>Create Link</h2>
-            <input className="url-input" type="text" placeholder="Enter URL" value={url} onChange={(e) => {
+            <input className="string-input" type="text" placeholder="Enter URL" value={url} onChange={(e) => {
                 setUrl(e.target.value)
                 setLinkResult(null)
                 setCreateError(null)
