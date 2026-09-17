@@ -4,6 +4,7 @@ import {useAuth, type IUserData, UserRole } from "./hooks/useAuth.ts";
 import FileUpload from "./components/FileUpload.tsx";
 import CreateLink from "./components/CreateLink.tsx";
 import AdminUserCreate from "./components/AdminUserCreate.tsx";
+import MyFiles from "./components/MyFiles.tsx";
 
 function App() {
     const {user, initialized, login, logout} = useAuth();
@@ -16,6 +17,7 @@ function App() {
                 {user?.role === UserRole.Admin && <AdminUserCreate />}
                 <FileUpload />
                 <CreateLink />
+                {user && <MyFiles />}
             </div>
         </div>
     )

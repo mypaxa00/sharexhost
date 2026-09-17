@@ -113,3 +113,21 @@
   color: var(--danger);
   cursor: default;
 }
+
+.file-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.file-table th,
+.file-table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}

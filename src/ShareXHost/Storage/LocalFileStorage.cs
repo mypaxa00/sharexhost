@@ -6,19 +6,18 @@ public class LocalFileStorage : IFileStorage
 
     public LocalFileStorage(IHostEnvironment environment)
     {
-        _storageRoot = Path.Combine(environment.ContentRootPath, "storage");
+        _storageRoot = Path.Combine(environment.ContentRootPath, "Storage", "Current");
         Directory.CreateDirectory(_storageRoot);
     }
     
     public async Task<string> SaveFileAsync(Stream file)
     {
         string fileName = Path.GetRandomFileName();
-        string filePath = Path.Combine(_storageRoot, fileName);
-        using (FileStream fileStream = new(filePath, FileMode.Create, FileAccess.Write))
-        {
-            await file.CopyToAsync(fileStream);
-        }
-        return fileName;
+        string currentFolder = CurrentFolder();
+        string filePath = Path.Combine(currentFolder, fileName);
+        await using FileStream fileStream = new(filePath, FileMode.Create, FileAccess.Write);
+        await file.CopyToAsync(fileStream);
+        return filePath;
     }
 
     public Task<Stream?> GetFileAsync(string storagePath)
@@ -43,5 +42,14 @@ public class LocalFileStorage : IFileStorage
         if (System.IO.File.Exists(fullPath)) System.IO.File.Delete(fullPath);
 
         return Task.CompletedTask;
+    }
+
+    private string CurrentFolder()
+    {
+        string yearFolder = Path.Combine(_storageRoot, DateTime.UtcNow.Year.ToString());
+        string monthFolder = Path.Combine(yearFolder, DateTime.UtcNow.Month.ToString("D2"));
+        string dayFolder = Path.Combine(monthFolder, DateTime.UtcNow.Day.ToString("D2"));
+        Directory.CreateDirectory(dayFolder);
+        return dayFolder;
     }
 }

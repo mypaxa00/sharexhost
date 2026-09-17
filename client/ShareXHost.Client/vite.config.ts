@@ -26,7 +26,10 @@ export default defineConfig({
       },
       '/admin/users': {
         target: 'http://localhost:5128'
-      }
+      },
+      '/files/mine': {
+        target: 'http://localhost:5128'
+      },
     }
   }
 })

@@ -26,7 +26,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
 
         using IServiceScope scope = _factory.Services.CreateScope();
-        await AuthAlice(scope);
+        await AuthUser(scope, "Alice");
 
         string antiForgeryToken = await GetAntiForgeryToken();
 
@@ -79,7 +79,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
 
         using IServiceScope scope = _factory.Services.CreateScope();
-        await AuthAlice(scope);
+        await AuthUser(scope, "Alice");
 
         string antiForgeryToken = await GetAntiForgeryToken();
 
@@ -154,7 +154,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
         
-        await AuthAlice(null);
+        await AuthUser(null, "Alice");
         
         string antiForgeryToken = await GetAntiForgeryToken();
 
@@ -345,6 +345,84 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
             createUserRequest);
         Assert.Equal(HttpStatusCode.Conflict, createUserWithExistingUsernameResponse.StatusCode);
     }
+    
+    [Fact]
+    public async Task MineFilesTest()
+    {
+        HttpResponseMessage anonymousResponse = await _client.GetAsync("/files/mine");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousResponse.StatusCode);
+        
+        using IServiceScope scope = _factory.Services.CreateScope();
+        await AuthUser(scope, "Alice");
+        
+        string antiForgeryToken = await GetAntiForgeryToken();
+
+        // Upload files as Alice
+        const int filesCount = 7;
+        for (int i = 0; i < filesCount; i++)
+        {
+            using MultipartFormDataContent content = new();
+            byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
+            content.Add(new ByteArrayContent(fileBytes), "file", $"test{i}.txt");
+            content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
+            HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
+            uploadResponse.EnsureSuccessStatusCode();
+        }
+
+        // Get Alice's files
+        HttpResponseMessage mineResponse = await _client.GetAsync("/files/mine?page=1&pageSize=5");
+        mineResponse.EnsureSuccessStatusCode();
+        PaginatedResponse<FileResponse> mineFilesResponse =
+            (await mineResponse.Content.ReadFromJsonAsync<PaginatedResponse<FileResponse>>())!;
+        
+        Assert.Equal(filesCount, mineFilesResponse.TotalCount);
+        Assert.Equal(5, mineFilesResponse.Items.Count);
+        // Verify that the files are ordered newest → oldest
+        for (int i = 0; i < mineFilesResponse.Items.Count - 1; i++)
+        {
+            DateTimeOffset current = mineFilesResponse.Items[i].CreatedAt;
+            DateTimeOffset next = mineFilesResponse.Items[i + 1].CreatedAt;
+            Assert.True(current >= next, $"File at index {i} is not newer than file at index {i + 1}");
+        }
+        FileResponse lastFileOnPage1 = mineFilesResponse.Items.Last();
+        
+        mineResponse = await _client.GetAsync("/files/mine?page=2&pageSize=5");
+        mineResponse.EnsureSuccessStatusCode();
+        mineFilesResponse = (await mineResponse.Content.ReadFromJsonAsync<PaginatedResponse<FileResponse>>())!;
+        
+        Assert.Equal(filesCount, mineFilesResponse.TotalCount);
+        Assert.Equal(2, mineFilesResponse.Items.Count);
+        Assert.True(lastFileOnPage1.CreatedAt >= mineFilesResponse.Items[0].CreatedAt);
+        // Verify that the files are ordered newest → oldest
+        for (int i = 0; i < mineFilesResponse.Items.Count - 1; i++)
+        {
+            DateTimeOffset current = mineFilesResponse.Items[i].CreatedAt;
+            DateTimeOffset next = mineFilesResponse.Items[i + 1].CreatedAt;
+            Assert.True(current >= next, $"File at index {i} is not newer than file at index {i + 1}");
+        }
+        
+        // Upload 2 files as Bob
+        await AuthUser(scope, "Bob");
+        antiForgeryToken = await GetAntiForgeryToken();
+        
+        for (int i = 0; i < 2; i++)
+        {
+            using MultipartFormDataContent content = new();
+            byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
+            content.Add(new ByteArrayContent(fileBytes), "file", $"bob_test{i}.txt");
+            content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
+            HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
+            uploadResponse.EnsureSuccessStatusCode();
+        }
+        
+        // Get Bob's files
+        mineResponse = await _client.GetAsync("/files/mine?page=1&pageSize=5");
+        mineResponse.EnsureSuccessStatusCode();
+        mineFilesResponse = (await mineResponse.Content.ReadFromJsonAsync<PaginatedResponse<FileResponse>>())!;
+        
+        Assert.Equal(2, mineFilesResponse.TotalCount);
+        Assert.Equal(2, mineFilesResponse.Items.Count);
+    }
 
     private async Task<string> GetAntiForgeryToken()
     {
@@ -353,16 +431,14 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
             .RequestToken;
         return antiForgeryToken;
     }
-
-    private async Task AuthAlice(IServiceScope? scope)
+    
+    private async Task AuthUser(IServiceScope? scope, string userName, string password = "password123")
     {
         IServiceScope currentScope = scope ?? _factory.Services.CreateScope();
-        const string userName = "Alice";
-        const string password = "password123";
         
         IUserService userService = currentScope.ServiceProvider.GetRequiredService<IUserService>();
-        User? alice = await userService.FindByUserNameAsync(userName);
-        if (alice is null) await userService.CreateAsync(userName, password, userName, UserRole.User);
+        User? user = await userService.FindByUserNameAsync(userName);
+        if (user is null) await userService.CreateAsync(userName, password, userName, UserRole.User);
 
         HttpResponseMessage response = await _client.PostAsync("/auth/login", JsonContent.Create(new LoginRequest
         {
