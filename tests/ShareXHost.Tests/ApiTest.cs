@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,7 +28,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
 
         using IServiceScope scope = _factory.Services.CreateScope();
-        await AuthUser(scope, "Alice");
+        await AuthUser("Alice", scope: scope);
 
         string antiForgeryToken = await GetAntiForgeryToken();
 
@@ -79,7 +81,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
 
         using IServiceScope scope = _factory.Services.CreateScope();
-        await AuthUser(scope, "Alice");
+        await AuthUser("Alice", scope: scope);
 
         string antiForgeryToken = await GetAntiForgeryToken();
 
@@ -154,7 +156,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
         
-        await AuthUser(null, "Alice");
+        await AuthUser("Alice");
         
         string antiForgeryToken = await GetAntiForgeryToken();
 
@@ -208,7 +210,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         IUserService userService = scope.ServiceProvider.GetRequiredService<IUserService>();
         IPasswordHasher<User> passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
         
-        User user = await userService.CreateAsync("testuser", "password123", "Test", UserRole.User);
+        User user = await userService.CreateAsync(nameof(CreateAsync_HashesPassword), "password123", "Test", UserRole.User);
 
         PasswordVerificationResult result =
             passwordHasher.VerifyHashedPassword(user, user.PasswordHash, "password123");
@@ -226,18 +228,21 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         using IServiceScope scope = _factory.Services.CreateScope();
         IUserService userService = scope.ServiceProvider.GetRequiredService<IUserService>();
-        
-        User user = await userService.CreateAsync("testuser", "password123", "Test", UserRole.User);
-        _ = await userService.CreateAsync("testuser2", "password321", "Test2", UserRole.User);
 
-        User? authenticatedUser = await userService.AuthenticateAsync("testuser", "password123");
+        const string testuser = nameof(AuthenticateAsync_VerifiesPassword);
+        const string testuser2 = testuser + "2";
+        
+        User user = await userService.CreateAsync(testuser, "password123", "Test", UserRole.User);
+        _ = await userService.CreateAsync(testuser2, "password321", "Test2", UserRole.User);
+
+        User? authenticatedUser = await userService.AuthenticateAsync(testuser, "password123");
         Assert.NotNull(authenticatedUser);
         Assert.Equal(user.Id, authenticatedUser.Id);
         
-        User? wrongUserPassword = await userService.AuthenticateAsync("testuser2", "password123");
+        User? wrongUserPassword = await userService.AuthenticateAsync(testuser2, "password123");
         Assert.Null(wrongUserPassword);
         
-        User? wrongPasswordUser = await userService.AuthenticateAsync("testuser", "wrong");
+        User? wrongPasswordUser = await userService.AuthenticateAsync(testuser, "wrong");
         Assert.Null(wrongPasswordUser);
         
         User? nonExistentUser = await userService.AuthenticateAsync("does-not-exist", "password123");
@@ -249,16 +254,17 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         using IServiceScope scope = _factory.Services.CreateScope();
         IUserService userService = scope.ServiceProvider.GetRequiredService<IUserService>();
-        
-        User user = await userService.CreateAsync("testuser", "password123", "Test", UserRole.User);
+
+        const string testuser = nameof(AuthLoginTest);
+        User user = await userService.CreateAsync(testuser, "password123", "Test", UserRole.User);
         
         HttpResponseMessage loginResponse = await _client.PostAsJsonAsync("/auth/login", new LoginRequest
         {
-            Name = "testuser",
+            Name = testuser,
             Password = "password123"
         });
         loginResponse.EnsureSuccessStatusCode();
-        string jwtToken = (await loginResponse.Content.ReadFromJsonAsync<JwtTokenResponse>())!.Token;
+        string jwtToken = (await loginResponse.Content.ReadFromJsonAsync<TokenResponse>())!.Token;
         
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
         HttpResponseMessage meResponse = await _client.GetAsync("/me");
@@ -272,7 +278,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         HttpResponseMessage badLoginResponse =
             await _client.PostAsJsonAsync("/auth/login", new LoginRequest
             {
-                Name = "testuser",
+                Name = testuser,
                 Password = "wrong-password"
             });
 
@@ -286,13 +292,16 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         IUserService userService = scope.ServiceProvider.GetRequiredService<IUserService>();
         
         // create regular user
-        await userService.CreateAsync("testuser", "password123", "Test", UserRole.User);
+        const string testuser = nameof(UserCreationTest) + "User";
+        await userService.CreateAsync(testuser, "password123", "Test", UserRole.User);
         // create an admin user
-        await userService.CreateAsync("adminuser", "adminpassword", "Admin", UserRole.Admin);
+        const string adminuser = nameof(UserCreationTest) + "Admin";
+        await userService.CreateAsync(adminuser, "adminpassword", "Admin", UserRole.Admin);
 
+        const string newuser = nameof(UserCreationTest) + "NewUser";
         CreateUserRequest createUserRequest = new()
         {
-            UserName = "newuser",
+            UserName = newuser,
             Password = "password123",
             Name = "New User",
             Role = UserRole.User
@@ -303,41 +312,41 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         HttpResponseMessage unauthenticatedResponse = await _client.PostAsJsonAsync("/admin/users",
             createUserRequest);
         Assert.Equal(HttpStatusCode.Unauthorized, unauthenticatedResponse.StatusCode);
-        User? potentialUser = await userService.FindByUserNameAsync("newuser");
+        User? potentialUser = await userService.FindByUserNameAsync(newuser);
         Assert.Null(potentialUser);
         
         // authenticate as testuser
         HttpResponseMessage loginResponse = await _client.PostAsJsonAsync("/auth/login", new LoginRequest
         {
-            Name = "testuser",
+            Name = testuser,
             Password = "password123"
         });
         loginResponse.EnsureSuccessStatusCode();
-        string jwtToken = (await loginResponse.Content.ReadFromJsonAsync<JwtTokenResponse>())!.Token;
+        string jwtToken = (await loginResponse.Content.ReadFromJsonAsync<TokenResponse>())!.Token;
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
         
         // try to create a new user as a non-admin
         HttpResponseMessage createUserResponse = await _client.PostAsJsonAsync("/admin/users",
             createUserRequest);
         Assert.Equal(HttpStatusCode.Forbidden, createUserResponse.StatusCode);
-        potentialUser = await userService.FindByUserNameAsync("newuser");
+        potentialUser = await userService.FindByUserNameAsync(newuser);
         Assert.Null(potentialUser);
         
         // authenticate as admin user
         HttpResponseMessage adminLoginResponse = await _client.PostAsJsonAsync("/auth/login", new LoginRequest
         {
-            Name = "adminuser",
+            Name = adminuser,
             Password = "adminpassword"
         });
         adminLoginResponse.EnsureSuccessStatusCode();
-        string adminJwtToken = (await adminLoginResponse.Content.ReadFromJsonAsync<JwtTokenResponse>())!.Token;
+        string adminJwtToken = (await adminLoginResponse.Content.ReadFromJsonAsync<TokenResponse>())!.Token;
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminJwtToken);
 
         // try to create a new user as an admin
         HttpResponseMessage createUserAsAdminResponse = await _client.PostAsJsonAsync("/admin/users",
             createUserRequest);
         Assert.Equal(HttpStatusCode.Created, createUserAsAdminResponse.StatusCode);
-        potentialUser = await userService.FindByUserNameAsync("newuser");
+        potentialUser = await userService.FindByUserNameAsync(newuser);
         Assert.NotNull(potentialUser);
         
         // try to create a user with an existing username
@@ -353,7 +362,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(HttpStatusCode.Unauthorized, anonymousResponse.StatusCode);
         
         using IServiceScope scope = _factory.Services.CreateScope();
-        await AuthUser(scope, "Alice");
+        await AuthUser("Alice", scope: scope);
         
         string antiForgeryToken = await GetAntiForgeryToken();
 
@@ -402,7 +411,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         }
         
         // Upload 2 files as Bob
-        await AuthUser(scope, "Bob");
+        await AuthUser("Bob", scope: scope);
         antiForgeryToken = await GetAntiForgeryToken();
         
         for (int i = 0; i < 2; i++)
@@ -424,6 +433,193 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(2, mineFilesResponse.Items.Count);
     }
 
+    [Fact]
+    public async Task AuthTokenTest()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        await AuthUser("Alice", scope: scope);
+        
+        HttpResponseMessage tokenResponse = await _client.PostAsync("/auth/tokens", JsonContent.Create(new CreateApiTokenRequest()
+        {
+            Name = "Test Token"
+        }));
+        tokenResponse.EnsureSuccessStatusCode();
+        
+        string token = (await tokenResponse.Content.ReadFromJsonAsync<TokenResponse>())!.Token;
+        
+        Assert.False(string.IsNullOrEmpty(token));
+        Assert.StartsWith("shx_", token);
+        
+        ApiToken apiToken = await scope.ServiceProvider
+            .GetRequiredService<AppDbContext>()
+            .ApiTokens
+            .AsNoTracking()
+            .SingleAsync(x => x.Name == "Test Token");
+        
+        Assert.NotEqual(token, apiToken.TokenHash);
+        Assert.Equal(
+            SHA256.HashData(Encoding.UTF8.GetBytes(token)),
+            Convert.FromBase64String(apiToken.TokenHash));
+        
+        IApiTokenService apiTokenService =
+            scope.ServiceProvider.GetRequiredService<IApiTokenService>();
+
+        Guid userId = (await scope.ServiceProvider.GetRequiredService<IUserService>().FindByUserNameAsync("Alice"))!.Id;
+        Guid? authenticatedUserId = await apiTokenService.AuthenticateAsync(token);
+
+        Assert.NotNull(authenticatedUserId);
+        Assert.Equal(userId, authenticatedUserId);
+        
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        HttpResponseMessage adminUsersResponse = await _client.PostAsync("/admin/users", JsonContent.Create(new CreateUserRequest
+        {
+            UserName = "Bob",
+            Password = "password123",
+            Name = "Bob",
+            Role = UserRole.User
+        }));
+        Assert.Equal(HttpStatusCode.Forbidden, adminUsersResponse.StatusCode);
+
+        HttpResponseMessage response = await _client.GetAsync("/me");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        
+        // verify that the token can be used to authenticate and access /files /links endpoints
+        using MultipartFormDataContent content = new();
+        byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
+        content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
+        
+        string antiForgeryToken = await GetAntiForgeryToken();
+
+        content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
+        HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
+        uploadResponse.EnsureSuccessStatusCode();
+
+        UploadResponse uploadResult = (await uploadResponse.Content.ReadFromJsonAsync<UploadResponse>())!;
+        
+        Assert.NotNull(uploadResult);
+        Assert.NotNull(uploadResult.Url);
+        Assert.NotNull(uploadResult.DeletionUrl);
+        
+        HttpResponseMessage linkResponse = await _client.PostAsJsonAsync(
+            "/links",
+            new CreateLinkRequest
+            {
+                Url = "https://example.com"
+            });
+
+        linkResponse.EnsureSuccessStatusCode();
+
+        UploadResponse linkResult =
+            (await linkResponse.Content.ReadFromJsonAsync<UploadResponse>())!;
+
+        Assert.NotNull(linkResult);
+        Assert.NotNull(linkResult.Url);
+        Assert.NotNull(linkResult.DeletionUrl);
+    }
+
+    [Fact]
+    public async Task AuthOwnedTokensTest()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        await AuthUser("Alice", scope: scope);
+
+        HttpResponseMessage tokenResponse1 = await _client.PostAsync("/auth/tokens", JsonContent.Create(new CreateApiTokenRequest()
+        {
+            Name = "Alice's Token 1"
+        }));
+        tokenResponse1.EnsureSuccessStatusCode();
+        
+        HttpResponseMessage tokenResponse2 = await _client.GetAsync("/auth/tokens");
+        tokenResponse2.EnsureSuccessStatusCode();
+        
+        PaginatedResponse<GetApiTokenResult> tokens = (await tokenResponse2.Content.ReadFromJsonAsync<PaginatedResponse<GetApiTokenResult>>())!;
+        Assert.Single(tokens.Items);
+        Assert.Equal("Alice's Token 1", tokens.Items[0].Name);
+        
+        string token = (await tokenResponse1.Content.ReadFromJsonAsync<TokenResponse>())!.Token;
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        
+        HttpResponseMessage tokenResponse3 = await _client.GetAsync("/auth/tokens");
+        Assert.Equal(HttpStatusCode.Forbidden, tokenResponse3.StatusCode);
+
+        await AuthUser("Bob", scope: scope);
+        
+        HttpResponseMessage tokenResponse4 = await _client.PostAsync("/auth/tokens", JsonContent.Create(new CreateApiTokenRequest()
+        {
+            Name = "Bob's Token 1"
+        }));
+        tokenResponse4.EnsureSuccessStatusCode();
+        
+        HttpResponseMessage tokenResponse5 = await _client.GetAsync("/auth/tokens");
+        tokenResponse5.EnsureSuccessStatusCode();
+        
+        PaginatedResponse<GetApiTokenResult> tokensBob = (await tokenResponse5.Content.ReadFromJsonAsync<PaginatedResponse<GetApiTokenResult>>())!;
+        Assert.Single(tokensBob.Items);
+        Assert.Equal("Bob's Token 1", tokensBob.Items[0].Name);
+    }
+
+    [Fact]
+    public async Task AuthDeleteTokenTest()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        await AuthUser("Alice", scope: scope);
+        
+        HttpResponseMessage tokenResponse1 = await _client.PostAsync("/auth/tokens", JsonContent.Create(new CreateApiTokenRequest()
+        {
+            Name = "Alice's Token 1"
+        }));
+        tokenResponse1.EnsureSuccessStatusCode();
+        
+        string aliceToken = (await tokenResponse1.Content.ReadFromJsonAsync<TokenResponse>())!.Token;
+        
+        // get Alice's tokens
+        HttpResponseMessage getAliceTokensResponse = await _client.GetAsync("/auth/tokens?page=1&pageSize=1");
+        getAliceTokensResponse.EnsureSuccessStatusCode();
+        PaginatedResponse<GetApiTokenResult> aliceTokens =
+            (await getAliceTokensResponse.Content.ReadFromJsonAsync<PaginatedResponse<GetApiTokenResult>>())!;
+        
+        await AuthUser("Bob", scope: scope);
+        
+        HttpResponseMessage tokenResponse2 = await _client.PostAsync("/auth/tokens", JsonContent.Create(new CreateApiTokenRequest()
+        {
+            Name = "Bob's Token 1"
+        }));
+        tokenResponse2.EnsureSuccessStatusCode();
+        
+        // get Bob's tokens
+        HttpResponseMessage getBobsTokensResponse = await _client.GetAsync("/auth/tokens?page=1&pageSize=1");
+        getBobsTokensResponse.EnsureSuccessStatusCode();
+        PaginatedResponse<GetApiTokenResult> bobsTokens =
+            (await getBobsTokensResponse.Content.ReadFromJsonAsync<PaginatedResponse<GetApiTokenResult>>())!;
+        
+        await AuthUser("Alice", scope: scope);
+        
+        // Alice tries to delete Bob's token
+        HttpResponseMessage deleteBobsTokenResponse = await _client.DeleteAsync($"/auth/tokens/{bobsTokens.Items[0].Id}");
+        Assert.Equal(HttpStatusCode.Forbidden, deleteBobsTokenResponse.StatusCode);
+        
+        // Alice deletes her own token
+        HttpResponseMessage deleteAliceTokenResponse = await _client.DeleteAsync($"/auth/tokens/{aliceTokens.Items[0].Id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleteAliceTokenResponse.StatusCode);
+        
+        // after deletion, Alice's token should no longer work
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", aliceToken);
+        // try post link
+        HttpResponseMessage postLinkResponse = await _client.PostAsJsonAsync("/links", new CreateLinkRequest
+        {
+            Url = "https://example.com"
+        });
+        Assert.Equal(HttpStatusCode.Unauthorized, postLinkResponse.StatusCode);
+        
+        // auth with invalid jwt token
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-token");
+        postLinkResponse = await _client.PostAsJsonAsync("/links", new CreateLinkRequest
+        {
+            Url = "https://example.com"
+        });
+        Assert.Equal(HttpStatusCode.Unauthorized, postLinkResponse.StatusCode);
+    }
+
     private async Task<string> GetAntiForgeryToken()
     {
         HttpResponseMessage antiForgeryResponse = await _client.GetAsync("/antiforgery/token");
@@ -432,7 +628,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         return antiForgeryToken;
     }
     
-    private async Task AuthUser(IServiceScope? scope, string userName, string password = "password123")
+    private async Task AuthUser(string userName, string password = "password123", IServiceScope? scope = null)
     {
         IServiceScope currentScope = scope ?? _factory.Services.CreateScope();
         
@@ -447,7 +643,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         }));
         response.EnsureSuccessStatusCode();
         
-        string token = (await response.Content.ReadFromJsonAsync<JwtTokenResponse>())!.Token;
+        string token = (await response.Content.ReadFromJsonAsync<TokenResponse>())!.Token;
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         
         if (scope is null) currentScope.Dispose();

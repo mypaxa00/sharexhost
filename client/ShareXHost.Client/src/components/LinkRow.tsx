@@ -1,7 +1,7 @@
 import { useState } from "react"
-import type {FileResponse} from "../models/FileResponse.ts";
+import type {LinkResponse} from "../models/LinkResponse.ts";
 
-function FileRow({ file, onDelete }: { file: FileResponse, onDelete: () => Promise<void> }) {
+function LinkRow({ link, onDelete }: { link: LinkResponse, onDelete: () => Promise<void> }) {
     const [deleting, setDeleting] = useState(false)
     const [deleteError, setDeleteError] = useState<string | null>(null)
 
@@ -23,11 +23,16 @@ function FileRow({ file, onDelete }: { file: FileResponse, onDelete: () => Promi
 
     return (
         <tr>
-            <td>{file.originalFileName}</td>
-            <td>{formatSize(file.sizeBytes)}</td>
-            <td>{new Date(file.createdAt).toLocaleString()}</td>
             <td>
-                <a className="button-accent" href={`/files/${file.id}`} download>Download</a>
+                <a href={link.url} target="_blank" rel="noopener noreferrer">
+                    {link.url}
+                </a>
+            </td>
+            <td>{new Date(link.createdAt).toLocaleString()}</td>
+            <td>
+                <a className="button-accent" href={`/s/${link.shortId}`} target="_blank" rel="noopener noreferrer">
+                    Open
+                </a>
             </td>
             <td>
                 <button className="button-danger" onClick={handleDelete} disabled={deleting}>Delete</button>
@@ -37,13 +42,4 @@ function FileRow({ file, onDelete }: { file: FileResponse, onDelete: () => Promi
     )
 }
 
-function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    const kb = bytes / 1024
-    if (kb < 1024) return `${kb.toFixed(1)} KB`
-    const mb = kb / 1024
-    if (mb < 1024) return `${mb.toFixed(1)} MB`
-    return `${(mb / 1024).toFixed(1)} GB`
-}
-
-export default FileRow
+export default LinkRow

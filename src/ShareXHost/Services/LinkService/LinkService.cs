@@ -89,15 +89,39 @@ public sealed class LinkService : ILinkService
             {
                 await _dbContext.SaveChangesAsync();
             }
-            catch (DbUpdateException exception)
+            catch (DbUpdateException)
             {
-                return DeleteLinkResult.Failure("Error deleting the link from the database.");
+                return DeleteLinkResult.DataBaseFailure();
             }
             
             return DeleteLinkResult.Success();
         }
 
         return DeleteLinkResult.Forbidden();
+    }
+    
+    public async Task<PaginatedResponse<LinkResponse>> GetLinksForUserAsync(Guid userId, int page, int pageSize)
+    {
+        if (page < 1) throw new ArgumentOutOfRangeException(nameof(page), "Page number must be greater than 0.");
+        if (pageSize is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than 0 and less than or equal to 100.");
+        
+        List<LinkResponse> links = await _dbContext.Links
+            .AsNoTracking()
+            .Where(link => link.UserId == userId)
+            .OrderByDescending(link => link.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(link => new LinkResponse
+            {
+                ShortId = link.ShortId,
+                Url = link.Url,
+                CreatedAt = link.CreatedAt
+            })
+            .ToListAsync();
+
+        int totalCount = await _dbContext.Links.AsNoTracking().Where(link => link.UserId == userId).CountAsync();
+
+        return new PaginatedResponse<LinkResponse>(links, totalCount, page, pageSize);
     }
 }
 

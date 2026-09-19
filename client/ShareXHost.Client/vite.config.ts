@@ -30,6 +30,9 @@ export default defineConfig({
       '/files/mine': {
         target: 'http://localhost:5128'
       },
+      '/auth/tokens': {
+        target: 'http://localhost:5128'
+      },
     }
   }
 })

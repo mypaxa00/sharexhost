@@ -94,6 +94,10 @@
   color: var(--danger);
 }
 
+.warning {
+  color: var(--warning);
+}
+
 .button-danger {
   padding: 8px 16px;
   border: 2px solid var(--danger);

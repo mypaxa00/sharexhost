@@ -3,12 +3,15 @@ using System.Security.Claims;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ShareXHost.Storage;
+using IPNetwork = System.Net.IPNetwork;
 
 namespace ShareXHost;
 
@@ -20,36 +23,28 @@ public partial class Program
     public static async Task Main(string[] args)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-
-        string connectionString =
-            builder.Configuration.GetConnectionString("DefaultConnection") ??
-            throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+        
+        TryLoadSecrets(builder.Configuration);
+        
         string jwtSigningKey =
             builder.Configuration.GetValue<string>("JwtSigningKey") ??
             throw new InvalidOperationException("JWT signing key not found.");
 
         SecurityKey securityKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(jwtSigningKey));
 
-        BuilderConfiguration(builder, connectionString, securityKey);
+        BuilderConfiguration(builder, securityKey);
 
         WebApplication app = builder.Build();
+        
+        app.UseDefaultFiles();
+        app.UseStaticFiles();
+        
+        app.UseForwardedHeaders();
 
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseAntiforgery();
         app.UseRateLimiter();
-
-        app.MapGet("/", () => "Hello World!");
-        
-        app.MapGet("/files/mine", async (IFileService fileService, HttpContext context, int page = 1, int pageSize = 25) =>
-        {
-            if (page < 1 || pageSize < 1 || pageSize > 100)
-                return Results.BadRequest(new { error = "Invalid pagination parameters." });
-            Guid? userId = TryGetUserId(context.User);
-            if (userId is null) return Results.Unauthorized();
-            PaginatedResponse<FileResponse> files = await fileService.GetFilesForUserAsync(userId.Value, page, pageSize);
-            return Results.Ok(files);
-        }).RequireAuthorization();
         
         app.MapGet("/files/{id:guid}", async (Guid id, IFileService fileService) =>
         {
@@ -83,7 +78,7 @@ public partial class Program
                 UploadFileStatus.Failure => Results.InternalServerError(new { error = result.Error }),
                 _ => Results.InternalServerError(new { error = "Unknown error occurred." })
             };
-        }).DisableAntiforgery().RequireRateLimiting("FileLimiter");
+        }).DisableAntiforgery().RequireRateLimiting("FileLimiter").RequireAuthorization("OptionalAuthentication");
         
         app.MapPost("/links", async (CreateLinkRequest linkRequest, ClaimsPrincipal user,
             ILinkService linkService, HttpContext context) =>
@@ -107,7 +102,7 @@ public partial class Program
                 UploadLinkStatus.Failure => Results.InternalServerError(new { error = result.Error }),
                 _ => Results.InternalServerError(new { error = "Unknown error occurred." })
             };
-        }).RequireRateLimiting("LinkLimiter");
+        }).RequireRateLimiting("LinkLimiter").RequireAuthorization("OptionalAuthentication");
 
         app.MapDelete("/files/{fileId:guid}",
             async (Guid fileId, string? deleteToken, ClaimsPrincipal user, IFileService fileService) =>
@@ -132,6 +127,26 @@ public partial class Program
             if (result.HasDatabaseFailure) return Results.InternalServerError();
             return result.IsForbidden ? Results.Forbid() : Results.NoContent();
         });
+        
+        app.MapGet("/files/mine", async (IFileService fileService, ClaimsPrincipal user, int page = 1, int pageSize = 25) =>
+        {
+            if (page < 1 || pageSize < 1 || pageSize > 100)
+                return Results.BadRequest(new { error = "Invalid pagination parameters." });
+            Guid? userId = TryGetUserId(user);
+            if (userId is null) return Results.Unauthorized();
+            PaginatedResponse<FileResponse> files = await fileService.GetFilesForUserAsync(userId.Value, page, pageSize);
+            return Results.Ok(files);
+        }).RequireAuthorization("JwtOnly");
+        
+        app.MapGet("/links/mine", async (ILinkService linkService, ClaimsPrincipal user, int page = 1, int pageSize = 25) =>
+        {
+            if (page < 1 || pageSize < 1 || pageSize > 100)
+                return Results.BadRequest(new { error = "Invalid pagination parameters." });
+            Guid? userId = TryGetUserId(user);
+            if (userId is null) return Results.Unauthorized();
+            PaginatedResponse<LinkResponse> links = await linkService.GetLinksForUserAsync(userId.Value, page, pageSize);
+            return Results.Ok(links);
+        }).RequireAuthorization("JwtOnly");
 
         app.MapGet("/me", (ClaimsPrincipal user) =>
         {
@@ -143,7 +158,7 @@ public partial class Program
                 Name = name,
                 Role = role
             });
-        }).RequireAuthorization();
+        }).RequireAuthorization("JwtOnly");
         
         app.MapPost("/auth/login", async (LoginRequest request, IUserService userService) =>
         {
@@ -167,7 +182,7 @@ public partial class Program
                 signingCredentials: credentials
             );
 
-            return Results.Ok(new JwtTokenResponse()
+            return Results.Ok(new TokenResponse()
             {
                 Token = new JwtSecurityTokenHandler().WriteToken(token)
             });
@@ -189,14 +204,53 @@ public partial class Program
 
             await userService.CreateAsync(request.UserName, request.Password, request.Name, request.Role);
             return Results.Created();
-        }).RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.Admin)));
+        }).RequireAuthorization("JwtAdmin");
+
+        app.MapGet("/auth/tokens", async (ClaimsPrincipal user, IApiTokenService apiTokenService, int page = 1, int pageSize = 10) =>
+        {
+            if (page < 1 || pageSize < 1 || pageSize > 100)
+                return Results.BadRequest(new { error = "Invalid pagination parameters." });
+            
+            Guid? userId = TryGetUserId(user);
+            if (userId is null) return Results.Unauthorized();
+
+            PaginatedResponse<GetApiTokenResult> tokens =
+                await apiTokenService.GetTokensForUserAsync(userId.Value, page, pageSize);
+            return Results.Ok(tokens);
+        }).RequireAuthorization("JwtOnly");
+
+        app.MapPost("/auth/tokens", async (IApiTokenService apiTokenService, ClaimsPrincipal user, CreateApiTokenRequest request) =>
+        {
+            Guid? userId = TryGetUserId(user);
+            if (userId is null) return Results.Unauthorized();
+            string tokenName = request.Name.Trim();
+            if (string.IsNullOrWhiteSpace(tokenName) || tokenName.Length > 100)
+                return Results.BadRequest(new { error = "Token name must be between 1 and 100 characters." });
+            
+            string token = await apiTokenService.CreateAsync(userId.Value, tokenName);
+            return Results.Ok(new TokenResponse { Token = token });
+        }).RequireAuthorization("JwtOnly");
         
+        app.MapDelete("/auth/tokens/{id:guid}", async (Guid id, ClaimsPrincipal user, IApiTokenService apiTokenService) =>
+        {
+            DeleteTokenResult result = await apiTokenService.DeleteAsync(
+                id,
+                TryGetUserId(user)
+            );
+            if (result.HasDatabaseFailure) return Results.InternalServerError();
+            return result.IsForbidden ? Results.Forbid() : Results.NoContent();
+        }).RequireAuthorization("JwtOnly");
+
+
         using (IServiceScope scope = app.Services.CreateScope())
         {
+            AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await dbContext.Database.MigrateAsync();
+
             IAdminBootstrapper bootstrapper =
                 scope.ServiceProvider.GetRequiredService<IAdminBootstrapper>();
-
             await bootstrapper.InitializeAsync();
+            
         }
         
         app.Run();
@@ -240,10 +294,54 @@ public partial class Program
         };
     }
 
+    private static void TryLoadSecrets(ConfigurationManager builderConfiguration)
+    {
+        const string jwtSecretPath = "/run/secrets/jwt_key";
+        if (System.IO.File.Exists(jwtSecretPath))
+        {
+            string jwtSigningKey = System.IO.File.ReadAllText(jwtSecretPath).Trim();
+            builderConfiguration["JwtSigningKey"] = jwtSigningKey;
+        }
 
-    private static void BuilderConfiguration(WebApplicationBuilder builder, string connectionString,
+        const string postgresPasswordPath = "/run/secrets/postgres_password";
+        if (System.IO.File.Exists(postgresPasswordPath))
+        {
+            string postgresPassword = System.IO.File.ReadAllText(postgresPasswordPath).Trim();
+
+            builderConfiguration["ConnectionStrings:DefaultConnection"] =
+                $"Host=postgres;Database=sharexhost;Username=sharexhost;Password={postgresPassword}";
+        }
+    }
+
+
+    private static void BuilderConfiguration(WebApplicationBuilder builder,
         SecurityKey securityKey)
     {
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders =
+                ForwardedHeaders.XForwardedFor |
+                ForwardedHeaders.XForwardedProto |
+                ForwardedHeaders.XForwardedHost;
+
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+            
+            string[] knownNetworks =
+                builder.Configuration
+                    .GetSection("ForwardedHeaders:KnownNetworks")
+                    .Get<string[]>() ?? [];
+
+            foreach (string network in knownNetworks)
+            {
+                options.KnownIPNetworks.Add(IPNetwork.Parse(network));
+            }
+        });
+        
+        string connectionString =
+            builder.Configuration.GetConnectionString("DefaultConnection") ??
+            throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+        
         builder.Services.AddDbContext<AppDbContext>(options =>
         {
             options.UseNpgsql(connectionString);
@@ -255,21 +353,68 @@ public partial class Program
         builder.Services.AddSingleton<IShortIdGenerator, ShortIdGenerator>();
         builder.Services.AddScoped<IFileService, FileService>();
         builder.Services.AddScoped<ILinkService, LinkService>();
+        builder.Services.AddSingleton<IApiTokenGenerator, ApiTokenGenerator>();
+        builder.Services.AddSingleton<IApiTokenHasher, ApiTokenHasher>();
+        builder.Services.AddScoped<IApiTokenService, ApiTokenService>();
 
-        builder.Services.AddAuthentication("Bearer")
-            .AddJwtBearer(options =>
+        builder.Services
+            .AddAuthentication("Bearer")
+            .AddPolicyScheme("Bearer", null, options =>
+            {
+                options.ForwardDefaultSelector = context =>
+                {
+                    string? authorization = context.Request.Headers.Authorization;
+
+                    return authorization?.StartsWith("Bearer shx_", StringComparison.OrdinalIgnoreCase) == true 
+                        ? "ApiToken" 
+                        : "JwtBearer";
+                };
+            })
+            .AddJwtBearer("JwtBearer", options =>
             {
                 options.TokenValidationParameters.ValidateIssuer = true;
                 options.TokenValidationParameters.ValidIssuer = "ShareXHost";
-        
+
                 options.TokenValidationParameters.ValidateAudience = true;
                 options.TokenValidationParameters.ValidAudience = "ShareXHost";
-        
+
                 options.TokenValidationParameters.ValidateIssuerSigningKey = true;
                 options.TokenValidationParameters.IssuerSigningKey = securityKey;
-            });
+            })
+            .AddScheme<AuthenticationSchemeOptions, ApiTokenAuthenticationHandler>(
+                "ApiToken",
+                _ => { });
 
-        builder.Services.AddAuthorization();
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy("JwtOnly", policy =>
+            {
+                policy.RequireAuthenticatedUser();
+                policy.RequireAssertion(context =>
+                    context.User.FindFirst("auth_type")?.Value != "api_token");
+            });
+            
+            options.AddPolicy("JwtAdmin", policy =>
+            {
+                policy.RequireAuthenticatedUser();
+                policy.RequireRole(nameof(UserRole.Admin));
+                policy.RequireAssertion(context =>
+                    context.User.FindFirst("auth_type")?.Value != "api_token");
+            });
+            
+            options.AddPolicy("OptionalAuthentication", policy =>
+            {
+                policy.AddAuthenticationSchemes("Bearer");
+
+                policy.RequireAssertion(context =>
+                {
+                    bool hasAuthHeader = context.Resource is HttpContext httpContext &&
+                                         httpContext.Request.Headers.ContainsKey("Authorization");
+
+                    return !hasAuthHeader || context.User.Identity?.IsAuthenticated == true;
+                });
+            });
+        });
         builder.Services.AddAntiforgery(options =>
         {
             options.HeaderName = "X-XSRF-TOKEN";
@@ -278,30 +423,39 @@ public partial class Program
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            
-            options.AddPolicy("LinkLimiter", context =>
-                RateLimitPartition.GetFixedWindowLimiter(
-                    partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                    factory: _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = 30,
-                        Window = TimeSpan.FromMinutes(1),
-                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = 0
-                    }));
-            
-            options.AddPolicy("FileLimiter", context =>
-                RateLimitPartition.GetFixedWindowLimiter(
-                    partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                    factory: _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = 10,
-                        Window = TimeSpan.FromMinutes(1),
-                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = 0
-                    }));
+            bool enabled = builder.Configuration.GetValue<bool>("RateLimiting:Enabled");
+
+            if (enabled)
+            {
+                options.AddPolicy("LinkLimiter", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 30,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                            QueueLimit = 0
+                        }));
+                
+                options.AddPolicy("FileLimiter", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 10,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                            QueueLimit = 0
+                        }));
+            }
+            else
+            {
+                options.AddPolicy("LinkLimiter", _ => RateLimitPartition.GetNoLimiter("testing"));
+                options.AddPolicy("FileLimiter", _ => RateLimitPartition.GetNoLimiter("testing"));
+            }
         });
-        
+
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());

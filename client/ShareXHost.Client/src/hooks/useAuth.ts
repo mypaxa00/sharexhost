@@ -1,16 +1,10 @@
 import {useEffect, useState } from "react"
+import type {UserRole} from "../api/userApi.ts";
 
 export interface IUserData {
     name: string
     role: UserRole
 }
-
-export const UserRole = {
-    User: "User",
-    Admin: "Admin"
-} as const
-
-export type UserRole = typeof UserRole[keyof typeof UserRole]
 
 export function useAuth() {
     const [initialized, setInitialized] = useState(false)

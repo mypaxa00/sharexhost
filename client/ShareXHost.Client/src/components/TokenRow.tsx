@@ -1,7 +1,7 @@
 import { useState } from "react"
-import type {FileResponse} from "../models/FileResponse.ts";
+import type {ApiTokenResponse} from "../api/tokensApi.ts";
 
-function FileRow({ file, onDelete }: { file: FileResponse, onDelete: () => Promise<void> }) {
+function TokenRow({ token, onDelete }: { token: ApiTokenResponse, onDelete: () => Promise<void> }) {
     const [deleting, setDeleting] = useState(false)
     const [deleteError, setDeleteError] = useState<string | null>(null)
 
@@ -23,12 +23,10 @@ function FileRow({ file, onDelete }: { file: FileResponse, onDelete: () => Promi
 
     return (
         <tr>
-            <td>{file.originalFileName}</td>
-            <td>{formatSize(file.sizeBytes)}</td>
-            <td>{new Date(file.createdAt).toLocaleString()}</td>
             <td>
-                <a className="button-accent" href={`/files/${file.id}`} download>Download</a>
+                <p>{token.name}</p>
             </td>
+            <td>{new Date(token.createdAt).toLocaleString()}</td>
             <td>
                 <button className="button-danger" onClick={handleDelete} disabled={deleting}>Delete</button>
                 {deleteError && <p className="error">{deleteError}</p>}
@@ -37,13 +35,4 @@ function FileRow({ file, onDelete }: { file: FileResponse, onDelete: () => Promi
     )
 }
 
-function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    const kb = bytes / 1024
-    if (kb < 1024) return `${kb.toFixed(1)} KB`
-    const mb = kb / 1024
-    if (mb < 1024) return `${mb.toFixed(1)} MB`
-    return `${(mb / 1024).toFixed(1)} GB`
-}
-
-export default FileRow
+export default TokenRow

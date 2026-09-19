@@ -1,14 +1,13 @@
 import { useState } from "react"
-import { useUpload, UploadError, type UploadResponse } from "../hooks/useUpload.ts";
 import CreatedUrl from "./CreatedUrl.tsx"
+import {deleteFile, uploadFile, UploadError, type UploadFileResponse} from "../api/filesApi.ts";
 
 function FileUpload() {
-    const {uploadFile, deleteFile} = useUpload()
     const [file, setFile] = useState<File | null>(null)
     const fileSelected = file !== null
 
     const [uploading, setUploading] = useState(false)
-    const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null)
+    const [uploadResult, setUploadResult] = useState<UploadFileResponse | null>(null)
     const [uploadError, setUploadError] = useState<string | null>(null)
 
     async function onUpload() {

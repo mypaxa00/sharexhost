@@ -1,9 +1,8 @@
-import { UserRole } from "../hooks/useAuth.ts";
 import { useState } from "react";
-import {UserError, useUser} from "../hooks/useUser.ts";
+import {UserError, createUser} from "../api/userApi.ts";
+import {UserRole} from "../api/userApi.ts";
 
 function AdminUserCreate() {
-    const createUser = useUser()
     const [userName, setUserName] = useState('')
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')

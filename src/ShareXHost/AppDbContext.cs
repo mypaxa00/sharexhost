@@ -8,6 +8,7 @@ public class
     public DbSet<User> Users => Set<User>();
     public DbSet<File> Files => Set<File>();
     public DbSet<Link> Links => Set<Link>();
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
     
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -23,6 +24,23 @@ public class
             entity.Property(e => e.Role).HasColumnName("role").IsRequired();
             
             entity.HasIndex(e => e.UserName).IsUnique().HasDatabaseName("users_user_name_key");
+        });
+        
+        modelBuilder.Entity<ApiToken>(entity =>
+        {
+            entity.ToTable("api_tokens");
+            entity.Property(e => e.Id).HasColumnName("id").IsRequired();
+            entity.Property(e => e.UserId).HasColumnName("user_id").IsRequired();
+            entity.Property(e => e.TokenHash).HasColumnName("token_hash").IsRequired();
+            entity.Property(e => e.Name).HasColumnName("name").IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
+
+            entity.HasIndex(e => e.TokenHash).IsUnique().HasDatabaseName("api_tokens_token_hash_key");
+            
+            entity.HasOne(d => d.User).WithMany(e => e.ApiTokens)
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("fk_api_tokens_user");
         });
         
         modelBuilder.Entity<File>(entity =>

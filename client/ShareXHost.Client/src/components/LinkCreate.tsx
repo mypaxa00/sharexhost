@@ -1,11 +1,10 @@
 import { useState } from "react"
-import { useLinks, LinkError, type LinkResponse } from "../hooks/useLinks.ts";
 import CreatedUrl from "./CreatedUrl.tsx"
+import {createLink, deleteLink, LinkError, type CreateLinkResponse} from "../api/linksApi.ts";
 
-function CreateLink() {
-    const { createLink, deleteLink } = useLinks()
+function LinkCreate() {
     const [url, setUrl] = useState('')
-    const [linkResult, setLinkResult] = useState<LinkResponse | null>(null)
+    const [linkResult, setLinkResult] = useState<CreateLinkResponse | null>(null)
     const [createError, setCreateError] = useState<string | null>(null)
     const [creating, setCreating] = useState(false)
 
@@ -69,4 +68,4 @@ function CreateLink() {
     )
 }
 
-export default CreateLink;
+export default LinkCreate;

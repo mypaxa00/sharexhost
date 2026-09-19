@@ -1,10 +1,13 @@
 import { useState } from "react"
 import './App.css'
-import {useAuth, type IUserData, UserRole } from "./hooks/useAuth.ts";
+import {useAuth, type IUserData } from "./hooks/useAuth.ts";
 import FileUpload from "./components/FileUpload.tsx";
-import CreateLink from "./components/CreateLink.tsx";
+import LinkCreate from "./components/LinkCreate.tsx";
 import AdminUserCreate from "./components/AdminUserCreate.tsx";
 import MyFiles from "./components/MyFiles.tsx";
+import {UserRole} from "./api/userApi.ts";
+import MyLinks from "./components/MyLinks.tsx";
+import APITokens from "./components/APITokens.tsx";
 
 function App() {
     const {user, initialized, login, logout} = useAuth();
@@ -15,9 +18,11 @@ function App() {
             {initialized && <Welcome user={user} onLogin={login} onLogout={logout}/>}
             <div className="tools">
                 {user?.role === UserRole.Admin && <AdminUserCreate />}
+                {user && <APITokens />}
                 <FileUpload />
-                <CreateLink />
+                <LinkCreate />
                 {user && <MyFiles />}
+                {user && <MyLinks />}
             </div>
         </div>
     )
@@ -49,10 +54,6 @@ function Welcome({user, onLogin, onLogout}: {user: IUserData | null, onLogin: (l
                 <p>Welcome, {user.name}!</p>
                 <sub>Role: {user.role}</sub>
             </div>
-            <button className="button-accent" onClick={() => {
-                const jwt = localStorage.getItem('jwt')
-                if (jwt) navigator.clipboard.writeText(jwt)
-            }}>Copy ShareX Token</button>
             <button className="button-danger" onClick={onLogout}>Logout</button>
         </>)
         : (<>
