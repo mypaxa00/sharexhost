@@ -41,3 +41,10 @@ lerna-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local secrets
+src/ShareXHost/secrets/*
+!src/ShareXHost/secrets/*.example
+
+# Deployment artifacts
+*.tar
