@@ -1,6 +1,12 @@
 import { useState } from "react"
 
-function CreatedUrl({ name, url, onDelete }: { name: string, url: string, onDelete: () => Promise<void> }) {
+interface CreatedUrlProps {
+    name: string
+    url: string
+    onDelete: () => Promise<void>
+}
+
+function CreatedUrl({ name, url, onDelete }: CreatedUrlProps) {
     const [deleting, setDeleting] = useState(false)
     const [deleteError, setDeleteError] = useState<string | null>(null)
     

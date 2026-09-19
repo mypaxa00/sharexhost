@@ -89,7 +89,7 @@ public sealed class ApiTokenService : IApiTokenService
             }
             catch (DbUpdateException)
             {
-                return DeleteTokenResult.DataBaseFailure();
+                return DeleteTokenResult.DatabaseFailure();
             }
             return DeleteTokenResult.Success();
         }

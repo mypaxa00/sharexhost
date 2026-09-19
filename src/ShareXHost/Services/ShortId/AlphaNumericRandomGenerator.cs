@@ -6,7 +6,7 @@ public static class AlphaNumericRandomGenerator
 {
     private const string Chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     
-    public static string Generate(int length = 6)
+    public static string Generate(int length)
     {
         if (length < 1) throw new ArgumentException("Length must be greater than 0.", nameof(length));
         int toExclusive = Chars.Length;

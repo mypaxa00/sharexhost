@@ -68,7 +68,7 @@ public sealed class LinkService : ILinkService
 
     public async Task<GetLinkResult> GetAsync(string linkId)
     {
-        Link? link = await _dbContext.Links.FirstOrDefaultAsync(x => x.ShortId == linkId);
+        Link? link = await _dbContext.Links.AsNoTracking().FirstOrDefaultAsync(x => x.ShortId == linkId);
         if (link is null) return GetLinkResult.NotFound();
         
         return GetLinkResult.SuccessResult(link.Url);
@@ -91,7 +91,7 @@ public sealed class LinkService : ILinkService
             }
             catch (DbUpdateException)
             {
-                return DeleteLinkResult.DataBaseFailure();
+                return DeleteLinkResult.DatabaseFailure();
             }
             
             return DeleteLinkResult.Success();

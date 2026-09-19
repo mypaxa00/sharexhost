@@ -30,7 +30,7 @@ public class DeleteLinkResult
             IsNoContent = true
         };
 
-    public static DeleteLinkResult DataBaseFailure() =>
+    public static DeleteLinkResult DatabaseFailure() =>
         new()
         {
             IsForbidden = false,

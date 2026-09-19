@@ -1,4 +1,5 @@
-import { getAuthHeaders } from "../api"
+import { getAuthHeaders } from "../authHeaders.ts"
+import {ApiError} from "../dto/ApiError.ts";
 
 export interface CreateLinkResponse {
     url: string;
@@ -12,15 +13,10 @@ export async function createLink(url: string) : Promise<CreateLinkResponse> {
         body: JSON.stringify({ url })
     })
     if (!response.ok) {
-        const errorData = await response.json()
-        console.log(errorData)
-        throw new LinkError('Link upload failed', response.status)
+        throw new ApiError('Link creation failed', response.status)
     }
 
-    const result = await response.json() as CreateLinkResponse;
-    console.log('Link created successfully:', result)
-
-    return result
+    return await response.json() as CreateLinkResponse;
 }
     
 export async function deleteLink(url: string) : Promise<void> {
@@ -29,17 +25,6 @@ export async function deleteLink(url: string) : Promise<void> {
         headers: getAuthHeaders(),
     })
     if (!response.ok) {
-        throw new LinkError('Link deletion failed', response.status)
-    }
-
-    console.log('Link deleted successfully.')
-}
-
-export class LinkError extends Error {
-    status: number;
-
-    constructor(message: string, status: number) {
-        super(message);
-        this.status = status;
+        throw new ApiError('Link deletion failed', response.status)
     }
 }

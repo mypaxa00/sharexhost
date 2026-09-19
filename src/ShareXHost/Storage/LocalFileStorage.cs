@@ -17,17 +17,19 @@ public class LocalFileStorage : IFileStorage
         string filePath = Path.Combine(currentFolder, fileName);
         await using FileStream fileStream = new(filePath, FileMode.Create, FileAccess.Write);
         await file.CopyToAsync(fileStream);
-        return filePath;
+        return Path.GetRelativePath(_storageRoot, filePath);
     }
 
     public Task<Stream?> GetFileAsync(string storagePath)
     {
         string fullPath = Path.Combine(_storageRoot, storagePath);
         
-        // check if we are still within the storage directory to prevent path traversal attacks
-        string storageDir = Path.GetFullPath(_storageRoot);
+        string storageDir = Path.GetFullPath(_storageRoot)
+            .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
         string requestedPath = Path.GetFullPath(fullPath);
-        if (!requestedPath.StartsWith(storageDir) || !System.IO.File.Exists(fullPath))
+
+        if (!requestedPath.StartsWith(storageDir, StringComparison.OrdinalIgnoreCase) || !System.IO.File.Exists(fullPath))
         {
             return Task.FromResult<Stream?>(null);
         }
@@ -39,6 +41,13 @@ public class LocalFileStorage : IFileStorage
     public Task DeleteFileAsync(string storagePath)
     {
         string fullPath = Path.Combine(_storageRoot, storagePath);
+        
+        string storageDir = Path.GetFullPath(_storageRoot)
+            .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string requestedPath = Path.GetFullPath(fullPath);
+        if (!requestedPath.StartsWith(storageDir, StringComparison.OrdinalIgnoreCase))
+            return Task.CompletedTask;
+        
         if (System.IO.File.Exists(fullPath)) System.IO.File.Delete(fullPath);
 
         return Task.CompletedTask;

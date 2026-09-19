@@ -18,7 +18,7 @@ public sealed class DeleteTokenResult
         IsForbidden = true
     };
 
-    public static DeleteTokenResult DataBaseFailure() => new()
+    public static DeleteTokenResult DatabaseFailure() => new()
     {
         HasDatabaseFailure = true
     };

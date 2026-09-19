@@ -1,30 +1,31 @@
 import { useEffect } from "react"
-import {createPaginatedApi, type PaginatedApi} from "../api/createPaginatedApi.ts";
+import {createPaginatedApi, type PaginatedDataSource} from "../api/createPaginatedApi.ts";
 import usePaginated, {type UsePaginatedResult} from "../hooks/usePaginated.ts";
 import {deleteLink} from "../api/linksApi.ts";
 import type {LinkResponse} from "../models/LinkResponse.ts";
 import LinkRow from "./LinkRow.tsx";
+import {ApiError} from "../dto/ApiError.ts";
 
-const api: PaginatedApi<LinkResponse> = createPaginatedApi<LinkResponse>("/links/mine");
+const pageSize = 5;
+const api: PaginatedDataSource<LinkResponse> = createPaginatedApi("/links/mine");
 
-function deleteFileById(fileId: string): Promise<void> {
+function deleteLinkById(fileId: string): Promise<void> {
     return deleteLink(`/links/${fileId}`)
 }
-const pageSize = 5;
 
 function MyLinks() {
-    const pagination: UsePaginatedResult<LinkResponse> = usePaginated(api, deleteFileById, pageSize)
+    const pagination: UsePaginatedResult<LinkResponse> = usePaginated(api, deleteLinkById, pageSize)
 
     useEffect(() => {
         pagination.loadPage(1)
-    }, [])
+    }, [pagination.loadPage])
 
     return (
         <section className="tool">
-            <h2>My Files</h2>
+            <h2>My Links</h2>
             {pagination.loading && <p>Loading...</p>}
             {!pagination.loading && pagination.error && <p className="error">{
-                pagination.error.status === 401
+                pagination.error instanceof ApiError && pagination.error.status === 401
                     ? "Your session has expired. Please log in again."
                     : "Failed to load links. Try again later."
             }</p>}
@@ -44,7 +45,7 @@ function MyLinks() {
                         ))}
                         {pagination.items.length === 0 && (
                             <tr>
-                                <td colSpan={5}>No links yet.</td>
+                                <td colSpan={4}>No links yet.</td>
                             </tr>
                         )}
                         </tbody>

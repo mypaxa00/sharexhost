@@ -1,35 +1,27 @@
-import { getAuthHeaders } from "../api"
 import type {PaginatedResponse} from "../models/PaginatedResponse.ts";
+import {getAuthHeaders} from "../authHeaders.ts";
+import {ApiError} from "../dto/ApiError.ts";
 
-export interface PaginatedApi<TResponse> {
+export interface PaginatedDataSource<TResponse> {
     getItems(page: number, pageSize: number): Promise<PaginatedResponse<TResponse>>;
 }
 
-export function createPaginatedApi<TResponse>(baseUrl: string): PaginatedApi<TResponse> {
+export function createPaginatedApi<TResponse>(baseUrl: string): PaginatedDataSource<TResponse> {
     async function getItems(page: number, pageSize: number): Promise<PaginatedResponse<TResponse>> {
-        const response = await fetch(`${baseUrl}?page=${page}&pageSize=${pageSize}`, {
+        const params = new URLSearchParams({
+            page: page.toString(),
+            pageSize: pageSize.toString(),
+        });
+        const response = await fetch(`${baseUrl}?${params}`, {
             method: 'GET',
             headers: getAuthHeaders(),
         })
         if (!response.ok) {
-            throw new PaginationError(`Failed to load items from ${baseUrl}`, response.status)
+            throw new ApiError(`Failed to load items from ${baseUrl}`, response.status)
         }
 
-        const result = await response.json() as PaginatedResponse<TResponse>;
-        console.log('Loaded successfully:', result)
-
-        return result
+        return await response.json() as PaginatedResponse<TResponse>
     }
 
     return { getItems }
-}
-
-export class PaginationError extends Error {
-    status: number;
-
-    constructor(message: string, status: number)
-    {
-        super(message);
-        this.status = status;
-    }
 }

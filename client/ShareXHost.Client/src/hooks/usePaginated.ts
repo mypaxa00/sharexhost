@@ -1,5 +1,5 @@
-import {useState} from "react";
-import {type PaginatedApi, PaginationError} from "../api/createPaginatedApi.ts";
+import {useCallback, useState} from "react";
+import {type PaginatedDataSource} from "../api/createPaginatedApi.ts";
 
 export interface UsePaginatedResult<TResponse>
 {
@@ -7,40 +7,36 @@ export interface UsePaginatedResult<TResponse>
     page: number,
     totalPages: number,
     loading: boolean,
-    error: PaginationError | null,
+    error: Error | null,
     loadPage: (newPage: number) => Promise<void>,
-    handleDelete: (fileId: string) => Promise<void>
+    handleDelete: (itemId: string) => Promise<void>
 }
 
-function usePaginated<TResponse>(api: PaginatedApi<TResponse>, deleteItem: (id: string) => Promise<void>, pageSize: number = 5)
+function usePaginated<TResponse>(dataSource: PaginatedDataSource<TResponse>, deleteItem: (id: string) => Promise<void>, pageSize: number = 5)
     : UsePaginatedResult<TResponse>
 {
     const [items, setItems] = useState<TResponse[]>([])
     const [page, setPage] = useState(1)
     const [totalCount, setTotalCount] = useState(0)
     const [loading, setLoading] = useState(false)
-    const [error, setError] = useState<PaginationError | null>(null)
+    const [error, setError] = useState<Error | null>(null)
 
-    async function loadPage(newPage: number) {
+    const loadPage = useCallback(async (newPage: number) => {
         setLoading(true)
         setError(null)
         try {
-            const result = await api.getItems(newPage, pageSize)
+            const result = await dataSource.getItems(newPage, pageSize)
             setItems(result.items)
             setPage(newPage)
             setTotalCount(result.totalCount)
         } catch (err) {
-            if (err instanceof PaginationError) {
-                setError(err)
-            } else {
-                setError(new PaginationError("Unknown error!", 0))
-            }
+            setError(err instanceof Error ? err : new Error("Unknown error"))
         } finally {
             setLoading(false)
         }
-    }
+    }, [dataSource, pageSize])
 
-    async function handleDelete(itemId: string) {
+    const handleDelete = useCallback(async (itemId: string) => {
         await deleteItem(itemId)
 
         const newTotalCount = totalCount - 1
@@ -54,7 +50,7 @@ function usePaginated<TResponse>(api: PaginatedApi<TResponse>, deleteItem: (id: 
         } else {
             await loadPage(page)
         }
-    }
+    }, [deleteItem, loadPage, page, pageSize, totalCount])
     
     return {
         items,

@@ -17,17 +17,25 @@ function APITokens() {
             setError("Token name is required");
             return;
         }
-        
+
+        setToken('');
         setError(null);
         setCreating(true);
         try {
-            const response = await createApiToken(name)
+            const response = await createApiToken(tokenName)
             setToken(response.token);
         } catch (error) {
-            console.error("Failed to create API token:", error);
             setError("Failed to create API token");
         } finally {
             setCreating(false);
+        }
+    }
+
+    async function handleCopyToken() {
+        try {
+            await navigator.clipboard.writeText(token)
+        } catch {
+            setError("Failed to copy API token.")
         }
     }
     
@@ -47,7 +55,7 @@ function APITokens() {
             <button className="button-accent" onClick={handleCreateToken} disabled={!canCreate}>{creating ? "Creating..." : "Create Token"}</button>
             {token && (
                 <div>
-                    <p>Token: {token} <button onClick={() => navigator.clipboard.writeText(token)}>Copy</button></p>
+                    <p>Token: {token} <button onClick={handleCopyToken}>Copy</button></p>
                     <p className="warning">This token should be copied and stored securely, as it will not be shown again.</p>
                 </div>
             )}

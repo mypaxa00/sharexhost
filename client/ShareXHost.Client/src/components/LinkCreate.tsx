@@ -1,18 +1,20 @@
 import { useState } from "react"
 import CreatedUrl from "./CreatedUrl.tsx"
-import {createLink, deleteLink, LinkError, type CreateLinkResponse} from "../api/linksApi.ts";
+import {createLink, deleteLink, type CreateLinkResponse} from "../api/linksApi.ts";
+import {ApiError} from "../dto/ApiError.ts";
 
 function LinkCreate() {
     const [url, setUrl] = useState('')
     const [linkResult, setLinkResult] = useState<CreateLinkResponse | null>(null)
     const [createError, setCreateError] = useState<string | null>(null)
     const [creating, setCreating] = useState(false)
+    const [deleteError, setDeleteError] = useState<string | null>(null)
 
     // url is null or empty
-    const createDisabled = url === '';
+    const createDisabled = !url || url.trim() === '';
     
     async function onCreateLink() {
-        if (!url) return;
+        if (!url || url.trim() === '') return;
         setCreateError(null)
 
         setCreating(true)
@@ -21,18 +23,18 @@ function LinkCreate() {
             setUrl('')
             setLinkResult(result)
         } catch (error) {
-            if (error instanceof LinkError) {
+            if (error instanceof ApiError) {
                 if (error.status === 400) {
-                    setCreateError('Link creation failed: Invalid URL.')
+                    setCreateError('Invalid URL.')
                 }
                 else if (error.status === 429) {
-                    setCreateError('Link creation failed: Too many requests. Please try again later.')
+                    setCreateError('Too many requests. Please try again later.')
                 } else {
-                    setCreateError(`Link creation failed with status ${error.status}`)
+                    setCreateError(`Link creation failed. Please try again later.`)
                 }
             }
             else {
-                setCreateError(`Link creation failed due to an unknown error: ${error}`)
+                setCreateError(`Link creation failed. Please try again later.`)
             }
         }
         finally {
@@ -44,10 +46,10 @@ function LinkCreate() {
             await deleteLink(linkResult!.deletionUrl)
             setLinkResult(null)
         } catch (error) {
-            if (error instanceof LinkError && error.status === 403) {
-                throw new Error("You don't have permission to delete this link.")
+            if (error instanceof ApiError && error.status === 403) {
+                setDeleteError("You don't have permission to delete this link.")
             } else {
-                throw new Error("Unknown error! Try again later.")
+                setDeleteError("Unknown error! Try again later.")
             }
         }
     }
@@ -63,6 +65,7 @@ function LinkCreate() {
             <button className="button-accent" onClick={onCreateLink} disabled={creating || createDisabled}>Create Link</button>
             {creating && <p>Creating link...</p>}
             {createError && <p className="error">{createError}</p>}
+            {deleteError && <p className="error">{deleteError}</p>}
             {!creating && linkResult && <CreatedUrl name="Short URL" url={linkResult.url} onDelete={onDeleteLink}/>}
         </section>
     )

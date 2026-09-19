@@ -1,7 +1,13 @@
 import { useState } from "react"
 import type {FileResponse} from "../models/FileResponse.ts";
+import {formatDate} from "../utils/formatDate.ts";
 
-function FileRow({ file, onDelete }: { file: FileResponse, onDelete: () => Promise<void> }) {
+interface FileRowProps {
+    file: FileResponse
+    onDelete: () => Promise<void>
+}
+
+function FileRow({ file, onDelete }: FileRowProps) {
     const [deleting, setDeleting] = useState(false)
     const [deleteError, setDeleteError] = useState<string | null>(null)
 
@@ -25,7 +31,7 @@ function FileRow({ file, onDelete }: { file: FileResponse, onDelete: () => Promi
         <tr>
             <td>{file.originalFileName}</td>
             <td>{formatSize(file.sizeBytes)}</td>
-            <td>{new Date(file.createdAt).toLocaleString()}</td>
+            <td>{formatDate(file.createdAt)}</td>
             <td>
                 <a className="button-accent" href={`/files/${file.id}`} download>Download</a>
             </td>

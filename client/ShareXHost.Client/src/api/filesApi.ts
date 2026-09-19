@@ -1,4 +1,5 @@
-import { getAuthHeaders } from "../api"
+import {getAuthHeaders} from "../authHeaders.ts"
+import {ApiError} from "../dto/ApiError.ts";
 
 export interface UploadFileResponse {
     url: string;
@@ -12,13 +13,9 @@ export async function uploadFile(formData: FormData) : Promise<UploadFileRespons
         body: formData
     })
     if (!response.ok) {
-        throw new UploadError('File upload failed', response.status)
+        throw new ApiError('File upload failed', response.status)
     }
-
-    const result = await response.json() as UploadFileResponse;
-    console.log('File uploaded successfully:', result)
-
-    return result
+    return await response.json() as UploadFileResponse
 }
     
 export async function deleteFile(url: string) : Promise<void> {
@@ -27,17 +24,6 @@ export async function deleteFile(url: string) : Promise<void> {
         headers: getAuthHeaders(),
     })
     if (!response.ok) {
-        throw new UploadError('File deletion failed', response.status)
-    }
-
-    console.log('File deleted successfully.')
-}
-
-export class UploadError extends Error {
-    status: number;
-    
-    constructor(message: string, status: number) {
-        super(message);
-        this.status = status;
+        throw new ApiError('File deletion failed', response.status)
     }
 }

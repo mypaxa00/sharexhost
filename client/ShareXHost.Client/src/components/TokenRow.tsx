@@ -1,7 +1,13 @@
 import { useState } from "react"
 import type {ApiTokenResponse} from "../api/tokensApi.ts";
+import {formatDate} from "../utils/formatDate.ts";
 
-function TokenRow({ token, onDelete }: { token: ApiTokenResponse, onDelete: () => Promise<void> }) {
+interface TokenRowProps {
+    token: ApiTokenResponse
+    onDelete: () => Promise<void>
+}
+
+function TokenRow({ token, onDelete }: TokenRowProps) {
     const [deleting, setDeleting] = useState(false)
     const [deleteError, setDeleteError] = useState<string | null>(null)
 
@@ -23,10 +29,8 @@ function TokenRow({ token, onDelete }: { token: ApiTokenResponse, onDelete: () =
 
     return (
         <tr>
-            <td>
-                <p>{token.name}</p>
-            </td>
-            <td>{new Date(token.createdAt).toLocaleString()}</td>
+            <td>{token.name}</td>
+            <td>{formatDate(token.createdAt)}</td>
             <td>
                 <button className="button-danger" onClick={handleDelete} disabled={deleting}>Delete</button>
                 {deleteError && <p className="error">{deleteError}</p>}

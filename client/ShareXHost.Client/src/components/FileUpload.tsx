@@ -1,6 +1,7 @@
 import { useState } from "react"
 import CreatedUrl from "./CreatedUrl.tsx"
-import {deleteFile, uploadFile, UploadError, type UploadFileResponse} from "../api/filesApi.ts";
+import {deleteFile, uploadFile, type UploadFileResponse} from "../api/filesApi.ts";
+import {ApiError} from "../dto/ApiError.ts";
 
 function FileUpload() {
     const [file, setFile] = useState<File | null>(null)
@@ -9,6 +10,7 @@ function FileUpload() {
     const [uploading, setUploading] = useState(false)
     const [uploadResult, setUploadResult] = useState<UploadFileResponse | null>(null)
     const [uploadError, setUploadError] = useState<string | null>(null)
+    const [deleteError, setDeleteError] = useState<string | null>(null)
 
     async function onUpload() {
         if (!file) return;
@@ -23,16 +25,16 @@ function FileUpload() {
             setFile(null)
             setUploadResult(result)
         } catch (error) {
-            if (error instanceof UploadError) {
+            if (error instanceof ApiError) {
                 if (error.status === 413) {
-                    setUploadError('File upload failed: File is too large.')
+                    setUploadError('File is too large.')
                 } else if (error.status === 429) {
-                    setUploadError('File upload failed: Too many requests. Please try again later.')
+                    setUploadError('Too many requests. Please try again later.')
                 } else {
-                    setUploadError(`File upload failed with status ${error.status}`)
+                    setUploadError(`File upload failed. Please try again later.`)
                 }
             } else {
-                setUploadError(`File upload failed due to an unknown error: ${error}`)
+                setUploadError(`File upload failed. Please try again later.`)
             }
         } finally {
             setUploading(false)
@@ -40,14 +42,15 @@ function FileUpload() {
     }
 
     async function onDelete() {
+        if (!uploadResult) return;
         try {
-            await deleteFile(uploadResult!.deletionUrl)
+            await deleteFile(uploadResult.deletionUrl)
             setUploadResult(null)
         } catch (error) {
-            if (error instanceof UploadError && error.status === 403) {
-                throw new Error("You don't have permission to delete this file.")
+            if (error instanceof ApiError && error.status === 403) {
+                setDeleteError("You don't have permission to delete this file.")
             } else {
-                throw new Error("Unknown error! Try again later.")
+                setDeleteError("Unknown error! Try again later.")
             }
         }
     }
@@ -64,6 +67,7 @@ function FileUpload() {
             {fileSelected && <button className="button-accent" onClick={onUpload} disabled={uploading}>Upload</button>}
             {uploading && <p>Uploading...</p>}
             {uploadError && <p className="error">{uploadError}</p>}
+            {deleteError && <p className="error">{deleteError}</p>}
             {!uploading && uploadResult && <CreatedUrl name="File URL:" url={uploadResult.url} onDelete={onDelete}/>}
         </section>
     )

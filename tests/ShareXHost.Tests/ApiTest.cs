@@ -30,9 +30,6 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         using IServiceScope scope = _factory.Services.CreateScope();
         await AuthUser("Alice", scope: scope);
 
-        string antiForgeryToken = await GetAntiForgeryToken();
-
-        content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
         HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
         uploadResponse.EnsureSuccessStatusCode();
 
@@ -83,9 +80,6 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         using IServiceScope scope = _factory.Services.CreateScope();
         await AuthUser("Alice", scope: scope);
 
-        string antiForgeryToken = await GetAntiForgeryToken();
-
-        content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
         HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
         uploadResponse.EnsureSuccessStatusCode();
 
@@ -118,10 +112,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         using MultipartFormDataContent content = new();
         byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
-        
-        string antiForgeryToken = await GetAntiForgeryToken();
 
-        content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
         HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
         uploadResponse.EnsureSuccessStatusCode();
 
@@ -157,10 +148,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
         
         await AuthUser("Alice");
-        
-        string antiForgeryToken = await GetAntiForgeryToken();
 
-        content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
         HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
         uploadResponse.EnsureSuccessStatusCode();
 
@@ -184,9 +172,6 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
         
-        string antiForgeryToken = await GetAntiForgeryToken();
-
-        content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
         HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
         uploadResponse.EnsureSuccessStatusCode();
 
@@ -363,8 +348,6 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         
         using IServiceScope scope = _factory.Services.CreateScope();
         await AuthUser("Alice", scope: scope);
-        
-        string antiForgeryToken = await GetAntiForgeryToken();
 
         // Upload files as Alice
         const int filesCount = 7;
@@ -373,7 +356,6 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
             using MultipartFormDataContent content = new();
             byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
             content.Add(new ByteArrayContent(fileBytes), "file", $"test{i}.txt");
-            content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
             HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
             uploadResponse.EnsureSuccessStatusCode();
         }
@@ -412,14 +394,12 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         
         // Upload 2 files as Bob
         await AuthUser("Bob", scope: scope);
-        antiForgeryToken = await GetAntiForgeryToken();
         
         for (int i = 0; i < 2; i++)
         {
             using MultipartFormDataContent content = new();
             byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
             content.Add(new ByteArrayContent(fileBytes), "file", $"bob_test{i}.txt");
-            content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
             HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
             uploadResponse.EnsureSuccessStatusCode();
         }
@@ -487,10 +467,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         using MultipartFormDataContent content = new();
         byte[] fileBytes = [.. "Hello, ShareXHost's World!"u8];
         content.Add(new ByteArrayContent(fileBytes), "file", "test.txt");
-        
-        string antiForgeryToken = await GetAntiForgeryToken();
 
-        content.Headers.Add("X-XSRF-TOKEN", antiForgeryToken);
         HttpResponseMessage uploadResponse = await _client.PostAsync("/files", content);
         uploadResponse.EnsureSuccessStatusCode();
 
@@ -618,14 +595,6 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
             Url = "https://example.com"
         });
         Assert.Equal(HttpStatusCode.Unauthorized, postLinkResponse.StatusCode);
-    }
-
-    private async Task<string> GetAntiForgeryToken()
-    {
-        HttpResponseMessage antiForgeryResponse = await _client.GetAsync("/antiforgery/token");
-        string antiForgeryToken = (await antiForgeryResponse.Content.ReadFromJsonAsync<AntiForgeryTokenResponse>())!
-            .RequestToken;
-        return antiForgeryToken;
     }
     
     private async Task AuthUser(string userName, string password = "password123", IServiceScope? scope = null)

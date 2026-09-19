@@ -1,6 +1,6 @@
-import { useState } from "react";
-import {UserError, createUser} from "../api/userApi.ts";
-import {UserRole} from "../api/userApi.ts";
+import {useState} from "react";
+import {UserRole, createUser} from "../api/userApi.ts";
+import {ApiError} from "../dto/ApiError.ts";
 
 function AdminUserCreate() {
     const [userName, setUserName] = useState('')
@@ -11,21 +11,34 @@ function AdminUserCreate() {
     const [creating, setCreating] = useState(false)
     const [createError, setCreateError] = useState<string | null>(null)
     const [result, setResult] = useState(false)
-    
-    const createDisabled = !userName || !password || !confirmPassword || !displayName || password !== confirmPassword
+
+    const createDisabled =
+        !userName.trim() ||
+        !password ||
+        !confirmPassword ||
+        !displayName.trim() ||
+        password !== confirmPassword
     
     async function onCreate() {
         setCreating(true)
         setCreateError(null)
         setResult(false)
         try {
-            await createUser(userName, password, displayName, role)
+            await createUser(userName.trim(), password, displayName.trim(), role)
             setResult(true)
         } catch (error) {
-            if (error instanceof UserError) {
-                setCreateError(`Error creating user: ${error.message} (status: ${error.status})`)
+            if (error instanceof ApiError) {
+                if (error.status === 400) {
+                    setCreateError("Invalid user details.")
+                } else if (error.status === 409) {
+                    setCreateError("A user with this username already exists.")
+                } else if (error.status === 429) {
+                    setCreateError("Too many requests. Please try again later.")
+                } else {
+                    setCreateError("Failed to create user. Please try again later.")
+                }
             } else {
-                setCreateError(`Error creating user: ${error}`)
+                setCreateError("Failed to create user. Please try again later.")
             }
         } finally {
             setCreating(false)
@@ -44,7 +57,7 @@ function AdminUserCreate() {
             <input className="string-input" type="password" placeholder="Confirm Password" value={confirmPassword} onChange={(e) => {
                 setConfirmPassword(e.target.value)
             }} />
-            <input className="string-input" type="Text" placeholder="Display Name" value={displayName} onChange={(e) => {
+            <input className="string-input" type="text" placeholder="Display Name" value={displayName} onChange={(e) => {
                 setDisplayName(e.target.value)
             }} />
             <select className="string-input" value={role}

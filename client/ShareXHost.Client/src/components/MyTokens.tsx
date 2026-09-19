@@ -1,29 +1,30 @@
 import { useEffect } from "react"
-import {createPaginatedApi, type PaginatedApi} from "../api/createPaginatedApi.ts";
+import {createPaginatedApi, type PaginatedDataSource} from "../api/createPaginatedApi.ts";
 import usePaginated, {type UsePaginatedResult} from "../hooks/usePaginated.ts";
 import {type ApiTokenResponse, deleteApiToken} from "../api/tokensApi.ts";
 import TokenRow from "./TokenRow.tsx";
+import {ApiError} from "../dto/ApiError.ts";
 
-const api: PaginatedApi<ApiTokenResponse> = createPaginatedApi<ApiTokenResponse>("/auth/tokens");
+const pageSize = 5;
+const api: PaginatedDataSource<ApiTokenResponse> = createPaginatedApi("/auth/tokens");
 
-function deleteById(id: string): Promise<void> {
+function deleteTokenById(id: string): Promise<void> {
     return deleteApiToken(id)
 }
-const pageSize = 5;
 
 function MyTokens() {
-    const pagination: UsePaginatedResult<ApiTokenResponse> = usePaginated(api, deleteById, pageSize)
+    const pagination: UsePaginatedResult<ApiTokenResponse> = usePaginated(api, deleteTokenById, pageSize)
 
     useEffect(() => {
         pagination.loadPage(1)
-    }, [])
+    }, [pagination.loadPage])
 
     return (
         <section className="tool">
             <h2>My Tokens</h2>
             {pagination.loading && <p>Loading...</p>}
             {!pagination.loading && pagination.error && <p className="error">{
-                pagination.error.status === 401
+                pagination.error instanceof ApiError && pagination.error.status === 401
                     ? "Your session has expired. Please log in again."
                     : "Failed to load tokens. Try again later."
             }</p>}
@@ -34,7 +35,7 @@ function MyTokens() {
                         <tr>
                             <th>Name</th>
                             <th>Created</th>
-                            <th colSpan={2}>Actions</th>
+                            <th>Actions</th>
                         </tr>
                         </thead>
                         <tbody>
